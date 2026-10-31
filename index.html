@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Série</title>
+  <meta name="description" content="Registro rápido de séries na academia">
+  <meta name="theme-color" content="#0B0D0C">
+  <meta name="color-scheme" content="dark">
+
+  <!-- PWA / iOS -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Série">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="icon" type="image/svg+xml" href="icons/icon.svg">
+
+  <link rel="preload" href="fonts/barlow-condensed-latin-800-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ============ TELA 1: ESCOLHA DO DIA ============ -->
+  <main id="view-inicio" class="view" data-view="inicio">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M6 7v10M18 7v10M3 10v4M21 10v4M6 12h12"/></svg>
+        </span>
+        <span class="brand-name">SÉRIE</span>
+      </div>
+      <div class="sync" role="status" aria-live="polite"></div>
+    </header>
+
+    <div class="hero">
+      <span class="eyebrow-date" id="hoje-label"></span>
+      <h1 class="display">Qual treino<br>é hoje?</h1>
+    </div>
+
+    <div class="spacer"></div>
+
+    <p class="ultimo-info" id="ultimo-info"></p>
+
+    <div class="dias-grid" id="dias-grid">
+      <button type="button" class="dia-btn" data-dia="A"><span class="dia-top"><span class="dia-label">TREINO</span></span><span class="dia-letra">A</span></button>
+      <button type="button" class="dia-btn" data-dia="B"><span class="dia-top"><span class="dia-label">TREINO</span></span><span class="dia-letra">B</span></button>
+      <button type="button" class="dia-btn" data-dia="C"><span class="dia-top"><span class="dia-label">TREINO</span></span><span class="dia-letra">C</span></button>
+      <button type="button" class="dia-btn" data-dia="D"><span class="dia-top"><span class="dia-label">TREINO</span></span><span class="dia-letra">D</span></button>
+    </div>
+
+    <button type="button" class="row-btn" id="btn-historico">
+      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg>
+      <span class="grow">Histórico</span>
+      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+    </button>
+  </main>
+
+  <!-- ============ TELA 2: EXERCÍCIOS DO DIA ============ -->
+  <main id="view-treino" class="view" data-view="treino" hidden>
+    <header class="topbar">
+      <button type="button" class="icon-btn" data-back aria-label="Voltar">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+      </button>
+      <div class="sync" role="status" aria-live="polite"></div>
+    </header>
+
+    <div class="title-row">
+      <div class="title-stack">
+        <span class="eyebrow" id="treino-data"></span>
+        <h1 class="display">Treino <span class="accent" id="treino-dia"></span></h1>
+      </div>
+      <span class="muted" id="treino-resumo"></span>
+    </div>
+
+    <div class="spacer"></div>
+
+    <div class="scroll-list">
+      <ul class="ex-list" id="ex-list"></ul>
+      <p class="empty" id="ex-empty" hidden>Nenhum exercício neste dia ainda.<br>Toque em <strong>Novo exercício</strong> para começar.</p>
+    </div>
+
+    <p class="hint" id="ex-hint">Segure um exercício para remover.</p>
+
+    <button type="button" class="dashed-btn" id="btn-novo-ex">
+      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      <span>Novo exercício</span>
+    </button>
+  </main>
+
+  <!-- ============ TELA 3: REGISTRAR SÉRIE ============ -->
+  <main id="view-exercicio" class="view" data-view="exercicio" hidden>
+    <header class="topbar">
+      <button type="button" class="pill-back" data-back>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+        <span id="ex-back-label">Treino</span>
+      </button>
+      <div class="sync" role="status" aria-live="polite"></div>
+    </header>
+
+    <div class="ex-head">
+      <h1 class="display ex-nome" id="ex-nome"></h1>
+      <div class="serie-counter">
+        <span class="eyebrow">SÉRIE</span>
+        <span class="serie-num" id="serie-num">1</span>
+      </div>
+    </div>
+
+    <section class="feitas">
+      <div class="section-head">
+        <span class="eyebrow">FEITAS HOJE</span>
+        <button type="button" class="ghost-btn" id="btn-desfazer" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg>
+          <span>Desfazer</span>
+        </button>
+      </div>
+      <div class="chips" id="feitas-chips"></div>
+      <p class="muted small" id="feitas-vazio">Nenhuma série ainda. Escolha as reps e registre.</p>
+    </section>
+
+    <div class="spacer"></div>
+
+    <section class="reps">
+      <div class="section-head">
+        <span class="eyebrow">REPETIÇÕES</span>
+        <div class="stepper">
+          <button type="button" class="step-btn" id="reps-menos" aria-label="Menos uma repetição">−</button>
+          <span class="step-val" id="reps-val" aria-live="polite">10</span>
+          <button type="button" class="step-btn" id="reps-mais" aria-label="Mais uma repetição">+</button>
+        </div>
+      </div>
+      <div class="reps-grid" id="reps-grid" role="group" aria-label="Repetições"></div>
+    </section>
+
+    <section class="carga">
+      <div class="section-head compact">
+        <span class="eyebrow">CARGA <span class="opt">(opcional)</span></span>
+        <button type="button" class="toggle-chip" id="btn-sem-carga" aria-pressed="false">Sem carga</button>
+      </div>
+      <div class="carga-row" id="carga-row">
+        <button type="button" class="carga-btn" id="carga-menos" aria-label="Menos 2,5 kg">−2,5</button>
+        <label class="carga-display" for="carga-input">
+          <input id="carga-input" type="text" inputmode="decimal" autocomplete="off" enterkeyhint="done" aria-label="Carga em kg">
+          <span class="unit">kg</span>
+        </label>
+        <button type="button" class="carga-btn" id="carga-mais" aria-label="Mais 2,5 kg">+2,5</button>
+      </div>
+    </section>
+
+    <button type="button" class="cta" id="btn-registrar">
+      <span class="cta-main" id="cta-main">Registrar série</span>
+      <span class="cta-sub" id="cta-sub"></span>
+    </button>
+
+    <div class="toast" id="toast" role="status" aria-live="assertive" hidden>
+      <span class="toast-check"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></span>
+      <span id="toast-txt"></span>
+    </div>
+  </main>
+
+  <!-- ============ TELA 4: HISTÓRICO ============ -->
+  <main id="view-historico" class="view view-historico" data-view="historico" hidden>
+    <header class="topbar left">
+      <button type="button" class="icon-btn" data-back aria-label="Voltar">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+      </button>
+      <h1 class="display small-display">Histórico</h1>
+      <div class="sync" role="status" aria-live="polite"></div>
+    </header>
+
+    <div class="hist-scroll" id="hist-scroll">
+      <div id="hist-list"></div>
+      <p class="empty" id="hist-vazio" hidden></p>
+    </div>
+
+    <div class="filter-bar">
+      <label class="select-wrap">
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8v6l-4 2v-8z"/></svg>
+        <span class="sr-only">Filtrar por exercício</span>
+        <select id="filtro-ex"></select>
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+      </label>
+      <div class="dia-chips" id="filtro-dia" role="group" aria-label="Filtrar por dia">
+        <button type="button" data-f="todos" class="todos">Todos</button>
+        <button type="button" data-f="A">A</button>
+        <button type="button" data-f="B">B</button>
+        <button type="button" data-f="C">C</button>
+        <button type="button" data-f="D">D</button>
+      </div>
+    </div>
+  </main>
+
+  <!-- ============ SHEET: NOVO EXERCÍCIO ============ -->
+  <div class="sheet-backdrop" id="sheet-backdrop" hidden></div>
+  <form class="sheet" id="sheet-novo" role="dialog" aria-modal="true" aria-labelledby="sheet-title" hidden>
+    <div class="sheet-handle" aria-hidden="true"></div>
+    <div>
+      <span class="eyebrow" id="sheet-eyebrow">ADICIONAR AO TREINO</span>
+      <h2 class="display sheet-title" id="sheet-title">Novo exercício</h2>
+    </div>
+    <div class="field">
+      <label for="novo-nome">Nome</label>
+      <input id="novo-nome" type="text" placeholder="Ex.: Leg press 45°" autocomplete="off" autocapitalize="sentences" enterkeyhint="done" maxlength="60">
+    </div>
+    <div class="field" id="sugestoes-wrap" hidden>
+      <span class="label">Ou toque em um já usado</span>
+      <div class="sugestoes" id="sugestoes"></div>
+    </div>
+    <div class="sheet-actions">
+      <button type="button" class="btn-sec" id="sheet-cancelar">Cancelar</button>
+      <button type="submit" class="btn-pri">Adicionar</button>
+    </div>
+  </form>
+
+  <!-- Gatilho de háptico no iOS 18+ (Safari): tocar no label de um checkbox "switch" vibra. -->
+  <input type="checkbox" switch id="haptic-switch" class="sr-only" aria-hidden="true" tabindex="-1">
+  <label for="haptic-switch" id="haptic-label" class="sr-only" aria-hidden="true"></label>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
