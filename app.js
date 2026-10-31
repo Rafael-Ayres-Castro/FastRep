@@ -160,8 +160,9 @@ async function processarFila() {
 }
 
 /* Traz o que está no servidor para este aparelho. Só roda com a fila vazia: com envios
-   pendentes o servidor ainda não reflete o que foi feito aqui. Séries que só existem no
-   aparelho são mantidas, para nunca perder dado local. */
+   pendentes o servidor ainda não reflete o que foi feito aqui. Com a fila vazia tudo que
+   o aparelho registrou já foi enviado, então o servidor é a fonte da verdade: séries
+   apagadas lá também somem daqui. */
 async function baixarDoServidor() {
   if (!navigator.onLine || fila.length) return;
   const revisao = revisaoFila;
@@ -174,12 +175,15 @@ async function baixarDoServidor() {
   }
   if (fila.length || revisao !== revisaoFila) return;
 
-  const porId = new Map(cache.map((s) => [s.id, s]));
-  doServidor.forEach((s) => {
-    porId.set(s.id, { ...s, criado_em: new Date(s.criado_em).toISOString() });
-  });
-  cache = [...porId.values()].sort((a, b) => a.criado_em.localeCompare(b.criado_em));
+  const antes = new Set(cache.map((s) => s.exercicio));
+  cache = doServidor.map((s) => ({ ...s, criado_em: new Date(s.criado_em).toISOString() }));
   gravarCache();
+
+  // Exercício que só existia por causa de séries (agora apagadas) sai da lista dos treinos.
+  const depois = new Set(cache.map((s) => s.exercicio));
+  DIAS.forEach((d) => {
+    exerciciosPorDia[d] = (exerciciosPorDia[d] || []).filter((n) => !antes.has(n) || depois.has(n));
+  });
   incluirExerciciosDoCache();
   atualizarTelaComDados();
 }
