@@ -81,7 +81,7 @@
       <p class="empty" id="ex-empty" hidden>Nenhum exercício neste dia ainda.<br>Toque em <strong>Novo exercício</strong> para começar.</p>
     </div>
 
-    <p class="hint" id="ex-hint">Segure um exercício para renomear ou remover.</p>
+    <p class="hint" id="ex-hint">Segure um exercício para editar ou remover.</p>
 
     <button type="button" class="dashed-btn" id="btn-novo-ex">
       <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
@@ -204,6 +204,16 @@
       <label for="novo-nome">Nome</label>
       <input id="novo-nome" type="text" placeholder="Ex.: Leg press 45°" autocomplete="off" autocapitalize="sentences" enterkeyhint="done" maxlength="60">
       <p class="field-erro" id="novo-erro" role="alert" hidden></p>
+    </div>
+    <div class="field-duo">
+      <div class="field">
+        <label for="padrao-reps">Reps padrão</label>
+        <input id="padrao-reps" type="text" inputmode="numeric" placeholder="12" autocomplete="off" enterkeyhint="done" maxlength="2">
+      </div>
+      <div class="field">
+        <label for="padrao-carga">Carga padrão (kg)</label>
+        <input id="padrao-carga" type="text" inputmode="decimal" placeholder="—" autocomplete="off" enterkeyhint="done" maxlength="6">
+      </div>
     </div>
     <div class="field" id="sugestoes-wrap" hidden>
       <span class="label">Ou toque em um já usado</span>

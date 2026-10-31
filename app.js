@@ -37,6 +37,7 @@ const CHAVES = {
   cache:      'serie.cache_series',    // cópia local que a interface lê (funciona offline)
   fila:       'serie.fila_sync',       // operações ainda não enviadas
   exercicios: 'serie.exercicios',      // { A: [...], B: [...], C: [...], D: [...] }
+  padroes:    'serie.padroes',         // { 'supino reto': { reps: 12, carga: 40 } }
   removidos:  'serie.exercicios_removidos', // ['A|supino reto'] não voltam ao baixar do servidor
 };
 
@@ -377,6 +378,25 @@ function ultimaSerieDe(exercicio) {
 
 function gravarExercicios() { store.gravar(CHAVES.exercicios, exerciciosPorDia); }
 
+function padraoDe(nome) {
+  return store.ler(CHAVES.padroes, {})[nome.toLowerCase()] || { reps: null, carga: null };
+}
+
+function gravarPadrao(nome, padrao) {
+  const padroes = store.ler(CHAVES.padroes, {});
+  if (padrao.reps == null && padrao.carga == null) delete padroes[nome.toLowerCase()];
+  else padroes[nome.toLowerCase()] = padrao;
+  store.gravar(CHAVES.padroes, padroes);
+}
+
+function lerPadraoDoSheet() {
+  const reps = lerNumero($('#padrao-reps').value);
+  return {
+    reps: reps == null || reps < 1 ? null : Math.min(99, Math.round(reps)),
+    carga: lerNumero($('#padrao-carga').value),
+  };
+}
+
 /* Feedback háptico: Android usa vibrate; iOS 18+ vibra ao tocar num <input switch>. */
 function vibrar(ms = 15) {
   try {
@@ -535,6 +555,8 @@ function abrirSheet() {
   $('#sheet-remover').hidden = true;
   const input = $('#novo-nome');
   input.value = '';
+  $('#padrao-reps').value = '';
+  $('#padrao-carga').value = '';
   limparErroNome();
 
   // Sugestões: exercícios já usados em outros dias (zero digitação).
@@ -565,11 +587,14 @@ function abrirSheet() {
 function abrirEdicao(nome) {
   estado.editando = nome;
   $('#sheet-eyebrow').textContent = `EDITAR · ${NOMES_TREINO[estado.dia].toUpperCase()}`;
-  $('#sheet-title').textContent = 'Renomear exercício';
+  $('#sheet-title').textContent = 'Editar exercício';
   $('#sheet-salvar').textContent = 'Salvar';
   $('#sheet-remover').hidden = false;
   $('#sugestoes-wrap').hidden = true;
   $('#novo-nome').value = nome;
+  const padrao = padraoDe(nome);
+  $('#padrao-reps').value = padrao.reps ?? '';
+  $('#padrao-carga').value = padrao.carga == null ? '' : fmtKg(padrao.carga);
   limparErroNome();
   $('#sheet-backdrop').hidden = false;
   $('#sheet-novo').hidden = false;
@@ -582,7 +607,6 @@ function salvarEdicao(nomeBruto) {
   const para = normalizarNome(nomeBruto);
   const input = $('#novo-nome');
   if (!para) { input.classList.add('is-invalid'); input.focus(); return; }
-  if (para === de) { fecharSheet(); return; }
 
   const existentes = new Set(cache.map((s) => s.exercicio));
   DIAS.forEach((d) => (exerciciosPorDia[d] || []).forEach((n) => existentes.add(n)));
@@ -594,15 +618,20 @@ function salvarEdicao(nomeBruto) {
     return;
   }
 
-  DIAS.forEach((d) => {
-    exerciciosPorDia[d] = (exerciciosPorDia[d] || []).map((n) => (n === de ? para : n));
-  });
-  gravarExercicios();
-  cache.forEach((s) => { if (s.exercicio === de) s.exercicio = para; });
-  gravarCache();
-  enfileirarRenomear(de, para);
-  if (estado.filtroEx === de) estado.filtroEx = para;
-  if (estado.exercicio === de) estado.exercicio = para;
+  const padrao = lerPadraoDoSheet();
+  if (para !== de) {
+    DIAS.forEach((d) => {
+      exerciciosPorDia[d] = (exerciciosPorDia[d] || []).map((n) => (n === de ? para : n));
+    });
+    gravarExercicios();
+    cache.forEach((s) => { if (s.exercicio === de) s.exercicio = para; });
+    gravarCache();
+    enfileirarRenomear(de, para);
+    if (estado.filtroEx === de) estado.filtroEx = para;
+    if (estado.exercicio === de) estado.exercicio = para;
+    gravarPadrao(de, { reps: null, carga: null });
+  }
+  gravarPadrao(para, padrao);
 
   vibrar(10);
   fecharSheet();
@@ -627,6 +656,9 @@ function adicionarExercicio(nomeBruto) {
     lista.push(nome);
     gravarExercicios();
   }
+  // Campos vazios não apagam o padrão de um exercício que já existe em outro treino.
+  const padrao = lerPadraoDoSheet();
+  if (padrao.reps != null || padrao.carga != null) gravarPadrao(nome, padrao);
   const chaveRemovido = `${estado.dia}|${nome.toLowerCase()}`;
   store.gravar(CHAVES.removidos, store.ler(CHAVES.removidos, []).filter((k) => k !== chaveRemovido));
   vibrar(10);
@@ -641,6 +673,7 @@ function ajustarSheetAoTeclado() {
   if (!vv || sheet.hidden) return;
   const encoberto = window.innerHeight - vv.height - vv.offsetTop;
   sheet.style.bottom = encoberto > 0 ? `${encoberto}px` : '';
+  sheet.style.maxHeight = `${vv.height}px`;
 }
 
 
@@ -655,9 +688,10 @@ let timerToast = null;
 function abrirExercicio(nome) {
   estado.exercicio = nome;
   const ultima = ultimaSerieDe(nome);
-  estado.reps = ultima ? ultima.repeticoes : REPS_PADRAO;
-  estado.carga = ultima ? ultima.carga_kg : null;
-  estado.semCarga = ultima ? ultima.carga_kg == null : false;
+  const padrao = padraoDe(nome);
+  estado.reps = padrao.reps ?? (ultima ? ultima.repeticoes : REPS_PADRAO);
+  estado.carga = padrao.carga ?? (ultima ? ultima.carga_kg : null);
+  estado.semCarga = padrao.carga == null && ultima ? ultima.carga_kg == null : false;
   vibrar(8);
   irPara('exercicio');
 }

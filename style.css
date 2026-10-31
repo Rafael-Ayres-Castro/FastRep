@@ -487,6 +487,7 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
   border-radius: 28px 28px 0 0;
   padding: 10px var(--pad) calc(var(--safe-bottom) + 18px);
   display: flex; flex-direction: column; gap: 18px;
+  overflow-y: auto;
   animation: slideup 220ms cubic-bezier(.2, .8, .2, 1);
 }
 .sheet-handle { align-self: center; width: 40px; height: 5px; border-radius: 3px; background: var(--line-strong); }
@@ -501,6 +502,8 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .field input:focus { border-color: var(--accent); }
 .field input::placeholder { color: #6F7872; }
 .field input.is-invalid { border-color: var(--danger); }
+.field-duo { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.field-duo input { width: 100%; min-width: 0; }
 .field-erro { margin: 0; font-size: 14px; font-weight: 500; color: var(--danger); }
 .sugestoes { display: flex; flex-wrap: wrap; gap: 8px; max-height: 112px; overflow-y: auto; }
 .sugestoes button {
