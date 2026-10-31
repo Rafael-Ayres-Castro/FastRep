@@ -37,7 +37,6 @@ const CHAVES = {
   cache:      'serie.cache_series',    // cópia local que a interface lê (funciona offline)
   fila:       'serie.fila_sync',       // operações ainda não enviadas
   exercicios: 'serie.exercicios',      // { A: [...], B: [...], C: [...], D: [...] }
-  ultimoDia:  'serie.ultimo_dia',
 };
 
 const store = {
@@ -327,7 +326,9 @@ function renderInicio() {
     hoje.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })
   );
 
-  const ultimoDia = store.ler(CHAVES.ultimoDia, null);
+  // Último treino = o da série registrada mais recentemente (só abrir um treino não conta).
+  const ultimaSerie = cache[cache.length - 1];
+  const ultimoDia = ultimaSerie ? ultimaSerie.dia_treino : null;
 
   document.querySelectorAll('.dia-btn').forEach((btn) => {
     const dia = btn.dataset.dia;
@@ -342,12 +343,8 @@ function renderInicio() {
 
   const info = $('#ultimo-info');
   if (ultimoDia) {
-    const ultimaDoDia = [...cache].reverse().find((s) => s.dia_treino === ultimoDia);
-    let quando = '';
-    if (ultimaDoDia) {
-      const k = chaveData(ultimaDoDia.criado_em);
-      quando = k === hojeChave() ? ' · hoje' : ' · ' + dataCurta(new Date(ultimaDoDia.criado_em));
-    }
+    const k = chaveData(ultimaSerie.criado_em);
+    const quando = k === hojeChave() ? ' · hoje' : ' · ' + dataCurta(new Date(ultimaSerie.criado_em));
     info.innerHTML = 'Último: <strong></strong><span></span>';
     info.querySelector('strong').textContent = NOMES_TREINO[ultimoDia];
     info.querySelector('span').textContent = quando;
@@ -358,7 +355,6 @@ function renderInicio() {
 
 function escolherDia(dia) {
   estado.dia = dia;
-  store.gravar(CHAVES.ultimoDia, dia);
   vibrar(8);
   irPara('treino');
 }
@@ -371,7 +367,7 @@ function escolherDia(dia) {
 function resumoExercicio(nome) {
   const hoje = seriesHoje(estado.dia, nome);
   if (hoje.length) {
-    return { hoje: hoje.length, texto: 'Hoje: ' + agruparSeries(hoje).map((g) => (g.length > 1 ? `${g.length}x ` : '') + fmtSerie(g[0].repeticoes, g[0].carga_kg)).join(' · ') };
+    return { hoje: hoje.length, grupos: agruparSeries(hoje) };
   }
   const ultima = ultimaSerieDe(nome);
   if (!ultima) return { hoje: 0, texto: 'Sem registro ainda' };
@@ -406,7 +402,13 @@ function renderTreino() {
         ? `<span class="ex-count" aria-label="${r.hoje} séries hoje">${r.hoje}</span>`
         : '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>'}`;
     btn.querySelector('.ex-title').textContent = nome;
-    btn.querySelector('.ex-sub').textContent = r.texto;
+    const sub = btn.querySelector('.ex-sub');
+    if (r.grupos) {
+      sub.className = 'ex-sets';
+      r.grupos.forEach((g) => sub.appendChild(criarChipSerie(g, 'hist-set')));
+    } else {
+      sub.textContent = r.texto;
+    }
     ligarLongPress(btn, () => abrirEdicao(nome));
     btn.addEventListener('click', () => {
       if (btn.dataset.longpress) { delete btn.dataset.longpress; return; }
@@ -838,27 +840,28 @@ function renderResumoHistorico(filtradas) {
   });
   box.appendChild(tiles);
 
-  // Últimos 7 dias: em quais dias houve treino
+  // Semana atual, de segunda a domingo: em quais dias houve treino
   const semana = document.createElement('div');
   semana.className = 'hist-semana';
   semana.setAttribute('role', 'img');
   const rotulosAria = [];
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date(); d.setDate(d.getDate() - i);
+  const hojeNaSemana = (new Date().getDay() + 6) % 7;   // segunda = 0 ... domingo = 6
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(); d.setDate(d.getDate() - hojeNaSemana + i);
     const k = chaveData(d);
     const dias = [...new Set(filtradas.filter((s) => chaveData(s.criado_em) === k).map((s) => s.dia_treino))].sort();
     if (dias.length) rotulosAria.push(`${dataCurta(d)}: ${dias.map((x) => NOMES_TREINO[x]).join(' e ')}`);
     const c = document.createElement('div');
-    c.className = 'hist-semana-dia' + (i === 0 ? ' is-hoje' : '');
+    c.className = 'hist-semana-dia' + (i === hojeNaSemana ? ' is-hoje' : '');
     c.innerHTML = '<span></span><b></b>';
-    c.firstChild.textContent = 'DSTQQSS'[d.getDay()];
+    c.firstChild.textContent = 'STQQSSD'[i];
     c.lastChild.textContent = dias.join('');
     c.lastChild.classList.toggle('is-on', dias.length > 0);
     semana.appendChild(c);
   }
   semana.setAttribute('aria-label', rotulosAria.length
-    ? `Últimos 7 dias. ${rotulosAria.join('. ')}.`
-    : 'Nenhum treino nos últimos 7 dias.');
+    ? `Esta semana. ${rotulosAria.join('. ')}.`
+    : 'Nenhum treino nesta semana.');
   box.appendChild(semana);
 }
 
