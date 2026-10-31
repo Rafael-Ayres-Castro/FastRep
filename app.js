@@ -37,6 +37,7 @@ const CHAVES = {
   cache:      'serie.cache_series',    // cópia local que a interface lê (funciona offline)
   fila:       'serie.fila_sync',       // operações ainda não enviadas
   exercicios: 'serie.exercicios',      // { A: [...], B: [...], C: [...], D: [...] }
+  removidos:  'serie.exercicios_removidos', // ['A|supino reto'] não voltam ao baixar do servidor
 };
 
 const store = {
@@ -55,6 +56,22 @@ const store = {
 const SUPABASE_URL = 'https://oxakvkbodlmkeaijtodi.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_bWGQ4gLLbKzrfc9D64rWHA_ok-7rmE-';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+/** Lê todas as séries do Supabase, em páginas (o limite por consulta é 1000 linhas). */
+async function buscarSeries() {
+  const TAMANHO = 1000;
+  const todas = [];
+  for (let de = 0; ; de += TAMANHO) {
+    const { data, error } = await sb.from('series')
+      .select('*')
+      .order('criado_em')
+      .order('id')
+      .range(de, de + TAMANHO - 1);
+    if (error) throw error;
+    todas.push(...data);
+    if (data.length < TAMANHO) return todas;
+  }
+}
 
 /** Persiste UMA série no Supabase (upsert: reenvio é seguro). */
 async function salvarSerie(serie) {
@@ -86,9 +103,10 @@ let fila = store.ler(CHAVES.fila, []);
 let sincronizando = false;
 let erroSync = false;
 let retryTimer = null;
+let revisaoFila = 0;     // muda a cada alteração da fila; detecta mudanças durante um download
 
 function gravarCache() { store.gravar(CHAVES.cache, cache); }
-function gravarFila() { store.gravar(CHAVES.fila, fila); }
+function gravarFila() { revisaoFila++; store.gravar(CHAVES.fila, fila); }
 
 function enfileirarInsert(serie) {
   fila.push({ op: 'insert', serie });
@@ -139,6 +157,54 @@ async function processarFila() {
     atualizarSync();
     if (estado.tela === 'historico') renderHistorico();
   }
+}
+
+/* Traz o que está no servidor para este aparelho. Só roda com a fila vazia: com envios
+   pendentes o servidor ainda não reflete o que foi feito aqui. Séries que só existem no
+   aparelho são mantidas, para nunca perder dado local. */
+async function baixarDoServidor() {
+  if (!navigator.onLine || fila.length) return;
+  const revisao = revisaoFila;
+  let doServidor;
+  try {
+    doServidor = await buscarSeries();
+  } catch (e) {
+    console.warn('Não foi possível baixar as séries', e);
+    return;
+  }
+  if (fila.length || revisao !== revisaoFila) return;
+
+  const porId = new Map(cache.map((s) => [s.id, s]));
+  doServidor.forEach((s) => {
+    porId.set(s.id, { ...s, criado_em: new Date(s.criado_em).toISOString() });
+  });
+  cache = [...porId.values()].sort((a, b) => a.criado_em.localeCompare(b.criado_em));
+  gravarCache();
+  incluirExerciciosDoCache();
+  atualizarTelaComDados();
+}
+
+function incluirExerciciosDoCache() {
+  const removidos = new Set(store.ler(CHAVES.removidos, []));
+  cache.forEach((s) => {
+    const lista = exerciciosPorDia[s.dia_treino] || (exerciciosPorDia[s.dia_treino] = []);
+    const nome = s.exercicio.toLowerCase();
+    if (removidos.has(`${s.dia_treino}|${nome}`)) return;
+    if (!lista.some((n) => n.toLowerCase() === nome)) lista.push(s.exercicio);
+  });
+  gravarExercicios();
+}
+
+function atualizarTelaComDados() {
+  if (estado.tela === 'inicio') renderInicio();
+  if (estado.tela === 'treino') renderTreino();
+  if (estado.tela === 'exercicio') renderExercicio();
+  if (estado.tela === 'historico') renderHistorico();
+}
+
+async function sincronizar() {
+  await processarFila();
+  await baixarDoServidor();
 }
 
 function atualizarSync() {
@@ -442,6 +508,7 @@ function removerExercicioDoDia(nome) {
   if (!confirm(`Remover "${nome}" do ${NOMES_TREINO[estado.dia]}?\nAs séries já registradas continuam no histórico.`)) return;
   exerciciosPorDia[estado.dia] = exerciciosPorDia[estado.dia].filter((n) => n !== nome);
   gravarExercicios();
+  store.gravar(CHAVES.removidos, [...store.ler(CHAVES.removidos, []), `${estado.dia}|${nome.toLowerCase()}`]);
   fecharSheet();
   renderTreino();
 }
@@ -556,6 +623,8 @@ function adicionarExercicio(nomeBruto) {
     lista.push(nome);
     gravarExercicios();
   }
+  const chaveRemovido = `${estado.dia}|${nome.toLowerCase()}`;
+  store.gravar(CHAVES.removidos, store.ler(CHAVES.removidos, []).filter((k) => k !== chaveRemovido));
   vibrar(10);
   fecharSheet();
   renderTreino();
@@ -1071,20 +1140,30 @@ function iniciar() {
   ligarHistorico();
 
   // Conexão
-  window.addEventListener('online', processarFila);
+  window.addEventListener('online', sincronizar);
   window.addEventListener('offline', atualizarSync);
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
-      processarFila();
+      sincronizar();
+      if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistration().then((r) => r && r.update()).catch(() => {});
       if (estado.tela === 'inicio') renderInicio(); // a data pode ter mudado
     }
   });
 
   history.replaceState({ tela: 'inicio' }, '');
   mostrar('inicio');
-  processarFila();
+  sincronizar();
 
   if ('serviceWorker' in navigator) {
+    // Versão nova assumiu o controle: recarrega para usar o código novo (não na primeira instalação).
+    if (navigator.serviceWorker.controller) {
+      let recarregando = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (recarregando) return;
+        recarregando = true;
+        location.reload();
+      });
+    }
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('sw.js').catch((e) => console.warn('SW não registrado', e));
     });
