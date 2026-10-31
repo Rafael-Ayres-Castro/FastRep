@@ -38,6 +38,7 @@ const CHAVES = {
   fila:       'serie.fila_sync',       // operações ainda não enviadas
   exercicios: 'serie.exercicios',      // { A: [...], B: [...], C: [...], D: [...] }
   padroes:    'serie.padroes',         // { 'supino reto': { reps: 12, carga: 40 } }
+  migrados:   'serie.exercicios_migrados', // este aparelho já enviou sua lista à tabela "exercicios"
   removidos:  'serie.exercicios_removidos', // ['A|supino reto'] não voltam ao baixar do servidor
 };
 
@@ -90,6 +91,32 @@ async function removerSerie(id) {
 async function renomearExercicioNoServidor(de, para) {
   const { error } = await sb.from('series').update({ exercicio: para }).eq('exercicio', de);
   if (error) throw error;
+
+  const r = await sb.from('exercicios').update({ nome: para }).eq('nome', de);
+  if (r.error && r.error.code === '23505') {
+    // Outro aparelho já criou o novo nome: fica só ele.
+    const { error: erroApagar } = await sb.from('exercicios').delete().eq('nome', de);
+    if (erroApagar) throw erroApagar;
+  } else if (r.error && !tabelaAusente(r.error)) {
+    throw r.error;
+  }
+}
+
+/* Sem a tabela "exercicios" o app segue funcionando só com a lista local. */
+function tabelaAusente(error) {
+  return error.code === 'PGRST205' || error.code === '42P01';
+}
+
+async function buscarExercicios() {
+  const { data, error } = await sb.from('exercicios').select('*').order('criado_em').order('nome');
+  if (error && tabelaAusente(error)) return null;
+  if (error) throw error;
+  return data;
+}
+
+async function salvarExercicio(linha) {
+  const { error } = await sb.from('exercicios').upsert(linha, { onConflict: 'nome' });
+  if (error && !tabelaAusente(error)) throw error;
 }
 
 
@@ -127,6 +154,20 @@ function enfileirarRenomear(de, para) {
   gravarFila();
 }
 
+/* A linha é montada do estado local; criado_em só vai na migração (preserva a ordem). */
+function enfileirarExercicio(nome, criadoEm) {
+  const padrao = padraoDe(nome);
+  const linha = {
+    nome,
+    dias: DIAS.filter((d) => (exerciciosPorDia[d] || []).includes(nome)),
+    reps_padrao: padrao.reps,
+    carga_padrao: padrao.carga,
+  };
+  if (criadoEm) linha.criado_em = criadoEm;
+  fila.push({ op: 'exercicio', linha });
+  gravarFila();
+}
+
 function idsPendentes() {
   return new Set(fila.filter((o) => o.op === 'insert').map((o) => o.serie.id));
 }
@@ -144,6 +185,7 @@ async function processarFila() {
       if (op.op === 'insert') await salvarSerie(op.serie);
       else if (op.op === 'delete') await removerSerie(op.id);
       else if (op.op === 'rename') await renomearExercicioNoServidor(op.de, op.para);
+      else if (op.op === 'exercicio') await salvarExercicio(op.linha);
       fila.shift();
       gravarFila();
     }
@@ -168,8 +210,10 @@ async function baixarDoServidor() {
   if (!navigator.onLine || fila.length) return;
   const revisao = revisaoFila;
   let doServidor;
+  let exercicios;
   try {
     doServidor = await buscarSeries();
+    exercicios = await buscarExercicios();
   } catch (e) {
     console.warn('Não foi possível baixar as séries', e);
     return;
@@ -180,13 +224,73 @@ async function baixarDoServidor() {
   cache = doServidor.map((s) => ({ ...s, criado_em: new Date(s.criado_em).toISOString() }));
   gravarCache();
 
-  // Exercício que só existia por causa de séries (agora apagadas) sai da lista dos treinos.
-  const depois = new Set(cache.map((s) => s.exercicio));
-  DIAS.forEach((d) => {
-    exerciciosPorDia[d] = (exerciciosPorDia[d] || []).filter((n) => !antes.has(n) || depois.has(n));
-  });
-  incluirExerciciosDoCache();
+  if (exercicios) {
+    aplicarExercicios(exercicios);
+  } else {
+    // Exercício que só existia por causa de séries (agora apagadas) sai da lista dos treinos.
+    const depois = new Set(cache.map((s) => s.exercicio));
+    DIAS.forEach((d) => {
+      exerciciosPorDia[d] = (exerciciosPorDia[d] || []).filter((n) => !antes.has(n) || depois.has(n));
+    });
+    incluirExerciciosDoCache();
+  }
   atualizarTelaComDados();
+  if (fila.length) processarFila();
+}
+
+/* A tabela "exercicios" é a fonte da verdade da lista de cada treino e dos padrões.
+   Na primeira vez, cada aparelho soma a ela o que tinha guardado localmente. */
+function aplicarExercicios(linhas) {
+  const mapa = new Map(linhas.map((l) => [l.nome.toLowerCase(), {
+    nome: l.nome,
+    dias: [...l.dias],
+    reps: l.reps_padrao,
+    carga: l.carga_padrao == null ? null : Number(l.carga_padrao),
+  }]));
+  const existentes = new Set(mapa.keys());
+  const alterados = new Set();
+
+  if (!store.ler(CHAVES.migrados, false)) {
+    const removidos = new Set(store.ler(CHAVES.removidos, []));
+    const juntar = (nome, dia) => {
+      const k = nome.toLowerCase();
+      if (!mapa.has(k)) { mapa.set(k, { nome, dias: [], reps: null, carga: null }); alterados.add(k); }
+      const e = mapa.get(k);
+      if (!e.dias.includes(dia)) { e.dias.push(dia); alterados.add(k); }
+    };
+    DIAS.forEach((d) => (exerciciosPorDia[d] || []).forEach((n) => juntar(n, d)));
+    // Tabela vazia: é a primeira migração, então recupera também o que só aparece nas séries.
+    if (!linhas.length) cache.forEach((s) => juntar(s.exercicio, s.dia_treino));
+
+    Object.entries(store.ler(CHAVES.padroes, {})).forEach(([k, p]) => {
+      const e = mapa.get(k);
+      if (!e) return;
+      if (e.reps == null && p.reps != null) { e.reps = p.reps; alterados.add(k); }
+      if (e.carga == null && p.carga != null) { e.carga = p.carga; alterados.add(k); }
+    });
+    mapa.forEach((e, k) => {
+      const dias = e.dias.filter((d) => !removidos.has(`${d}|${k}`));
+      if (dias.length !== e.dias.length) { e.dias = dias; alterados.add(k); }
+    });
+    store.gravar(CHAVES.migrados, true);
+  }
+
+  const todos = [...mapa.values()];
+  DIAS.forEach((d) => {
+    exerciciosPorDia[d] = todos.filter((e) => e.dias.includes(d)).map((e) => e.nome);
+  });
+  gravarExercicios();
+
+  const padroes = {};
+  mapa.forEach((e, k) => {
+    if (e.reps != null || e.carga != null) padroes[k] = { reps: e.reps, carga: e.carga };
+  });
+  store.gravar(CHAVES.padroes, padroes);
+
+  const agora = Date.now();
+  [...alterados].forEach((k, i) => {
+    enfileirarExercicio(mapa.get(k).nome, existentes.has(k) ? null : new Date(agora + i).toISOString());
+  });
 }
 
 function incluirExerciciosDoCache() {
@@ -533,6 +637,8 @@ function removerExercicioDoDia(nome) {
   exerciciosPorDia[estado.dia] = exerciciosPorDia[estado.dia].filter((n) => n !== nome);
   gravarExercicios();
   store.gravar(CHAVES.removidos, [...store.ler(CHAVES.removidos, []), `${estado.dia}|${nome.toLowerCase()}`]);
+  enfileirarExercicio(nome);
+  processarFila();
   fecharSheet();
   renderTreino();
 }
@@ -632,6 +738,7 @@ function salvarEdicao(nomeBruto) {
     gravarPadrao(de, { reps: null, carga: null });
   }
   gravarPadrao(para, padrao);
+  enfileirarExercicio(para);
 
   vibrar(10);
   fecharSheet();
@@ -661,6 +768,8 @@ function adicionarExercicio(nomeBruto) {
   if (padrao.reps != null || padrao.carga != null) gravarPadrao(nome, padrao);
   const chaveRemovido = `${estado.dia}|${nome.toLowerCase()}`;
   store.gravar(CHAVES.removidos, store.ler(CHAVES.removidos, []).filter((k) => k !== chaveRemovido));
+  enfileirarExercicio(lista.find((n) => n.toLowerCase() === nome.toLowerCase()));
+  processarFila();
   vibrar(10);
   fecharSheet();
   renderTreino();

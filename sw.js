@@ -1,6 +1,6 @@
 /* Service worker básico: guarda o app no aparelho para abrir offline.
    Ao alterar qualquer arquivo do app, aumente a VERSAO para forçar atualização. */
-const VERSAO = 'fastrep-v9';
+const VERSAO = 'fastrep-v10';
 
 const ARQUIVOS = [
   './',

@@ -28,5 +28,17 @@ create table series (
 );
 ```
 
+Tabela `exercicios` (lista de cada treino e padrões, compartilhados entre aparelhos):
+
+```sql
+create table exercicios (
+  nome          text primary key,
+  dias          text[] not null default '{}',
+  reps_padrao   integer,
+  carga_padrao  numeric,
+  criado_em     timestamptz not null default now()
+);
+```
+
 Ao alterar arquivos, aumente `VERSAO` em `sw.js` para o app atualizar no celular.
 # FastRep
