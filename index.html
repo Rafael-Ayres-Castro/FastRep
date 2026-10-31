@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Série</title>
+  <title>FastRep</title>
   <meta name="description" content="Registro rápido de séries na academia">
   <meta name="theme-color" content="#0B0D0C">
   <meta name="color-scheme" content="dark">
@@ -13,7 +13,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Série">
+  <meta name="apple-mobile-web-app-title" content="FastRep">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="icon" type="image/svg+xml" href="icons/icon.svg">
 
@@ -29,7 +29,7 @@
         <span class="brand-mark" aria-hidden="true">
           <svg viewBox="0 0 24 24"><path d="M6 7v10M18 7v10M3 10v4M21 10v4M6 12h12"/></svg>
         </span>
-        <span class="brand-name">SÉRIE</span>
+        <span class="brand-name">FASTREP</span>
       </div>
       <div class="sync" role="status" aria-live="polite"></div>
     </header>
@@ -44,10 +44,10 @@
     <p class="ultimo-info" id="ultimo-info"></p>
 
     <div class="dias-grid" id="dias-grid">
-      <button type="button" class="dia-btn" data-dia="A"><span class="dia-top"><span class="dia-label">TREINO</span></span><span class="dia-letra">A</span></button>
-      <button type="button" class="dia-btn" data-dia="B"><span class="dia-top"><span class="dia-label">TREINO</span></span><span class="dia-letra">B</span></button>
-      <button type="button" class="dia-btn" data-dia="C"><span class="dia-top"><span class="dia-label">TREINO</span></span><span class="dia-letra">C</span></button>
-      <button type="button" class="dia-btn" data-dia="D"><span class="dia-top"><span class="dia-label">TREINO</span></span><span class="dia-letra">D</span></button>
+      <button type="button" class="dia-btn" data-dia="A"><span class="dia-top"><span class="dia-label">TREINO A</span></span><span class="dia-nome">Peito<br>Day</span></button>
+      <button type="button" class="dia-btn" data-dia="B"><span class="dia-top"><span class="dia-label">TREINO B</span></span><span class="dia-nome">Costas<br>Day</span></button>
+      <button type="button" class="dia-btn" data-dia="C"><span class="dia-top"><span class="dia-label">TREINO C</span></span><span class="dia-nome">Leg<br>Day</span></button>
+      <button type="button" class="dia-btn" data-dia="D"><span class="dia-top"><span class="dia-label">TREINO D</span></span><span class="dia-nome">Ombro<br>Day</span></button>
     </div>
 
     <button type="button" class="row-btn" id="btn-historico">
@@ -69,7 +69,7 @@
     <div class="title-row">
       <div class="title-stack">
         <span class="eyebrow" id="treino-data"></span>
-        <h1 class="display">Treino <span class="accent" id="treino-dia"></span></h1>
+        <h1 class="display accent" id="treino-dia"></h1>
       </div>
       <span class="muted" id="treino-resumo"></span>
     </div>
@@ -81,7 +81,7 @@
       <p class="empty" id="ex-empty" hidden>Nenhum exercício neste dia ainda.<br>Toque em <strong>Novo exercício</strong> para começar.</p>
     </div>
 
-    <p class="hint" id="ex-hint">Segure um exercício para remover.</p>
+    <p class="hint" id="ex-hint">Segure um exercício para renomear ou remover.</p>
 
     <button type="button" class="dashed-btn" id="btn-novo-ex">
       <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
@@ -126,7 +126,7 @@
         <span class="eyebrow">REPETIÇÕES</span>
         <div class="stepper">
           <button type="button" class="step-btn" id="reps-menos" aria-label="Menos uma repetição">−</button>
-          <span class="step-val" id="reps-val" aria-live="polite">10</span>
+          <span class="step-val" id="reps-val" aria-live="polite">12</span>
           <button type="button" class="step-btn" id="reps-mais" aria-label="Mais uma repetição">+</button>
         </div>
       </div>
@@ -170,6 +170,7 @@
     </header>
 
     <div class="hist-scroll" id="hist-scroll">
+      <div id="hist-resumo"></div>
       <div id="hist-list"></div>
       <p class="empty" id="hist-vazio" hidden></p>
     </div>
@@ -182,16 +183,16 @@
         <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
       </label>
       <div class="dia-chips" id="filtro-dia" role="group" aria-label="Filtrar por dia">
-        <button type="button" data-f="todos" class="todos">Todos</button>
-        <button type="button" data-f="A">A</button>
-        <button type="button" data-f="B">B</button>
-        <button type="button" data-f="C">C</button>
-        <button type="button" data-f="D">D</button>
+        <button type="button" data-f="todos">Todos</button>
+        <button type="button" data-f="A">Peito</button>
+        <button type="button" data-f="B">Costas</button>
+        <button type="button" data-f="C">Leg</button>
+        <button type="button" data-f="D">Ombro</button>
       </div>
     </div>
   </main>
 
-  <!-- ============ SHEET: NOVO EXERCÍCIO ============ -->
+  <!-- ============ SHEET: NOVO / EDITAR EXERCÍCIO ============ -->
   <div class="sheet-backdrop" id="sheet-backdrop" hidden></div>
   <form class="sheet" id="sheet-novo" role="dialog" aria-modal="true" aria-labelledby="sheet-title" hidden>
     <div class="sheet-handle" aria-hidden="true"></div>
@@ -202,6 +203,7 @@
     <div class="field">
       <label for="novo-nome">Nome</label>
       <input id="novo-nome" type="text" placeholder="Ex.: Leg press 45°" autocomplete="off" autocapitalize="sentences" enterkeyhint="done" maxlength="60">
+      <p class="field-erro" id="novo-erro" role="alert" hidden></p>
     </div>
     <div class="field" id="sugestoes-wrap" hidden>
       <span class="label">Ou toque em um já usado</span>
@@ -209,15 +211,16 @@
     </div>
     <div class="sheet-actions">
       <button type="button" class="btn-sec" id="sheet-cancelar">Cancelar</button>
-      <button type="submit" class="btn-pri">Adicionar</button>
+      <button type="submit" class="btn-pri" id="sheet-salvar">Adicionar</button>
     </div>
+    <button type="button" class="btn-remover" id="sheet-remover" hidden>Remover do treino</button>
   </form>
 
   <!-- Gatilho de háptico no iOS 18+ (Safari): tocar no label de um checkbox "switch" vibra. -->
   <input type="checkbox" switch id="haptic-switch" class="sr-only" aria-hidden="true" tabindex="-1">
   <label for="haptic-switch" id="haptic-label" class="sr-only" aria-hidden="true"></label>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+  <script src="vendor/supabase.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

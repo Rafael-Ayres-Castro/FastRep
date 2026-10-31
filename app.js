@@ -1,13 +1,13 @@
 'use strict';
 
 /* =====================================================================
-   Série — registro rápido de treino (PWA)
+   FastRep — registro rápido de treino (PWA)
    ---------------------------------------------------------------------
    Estrutura do arquivo:
      1. Camada de dados  → salvarSerie() / removerSerie()  ← trocar pelo Supabase
      2. Fila de sincronização (offline-first)
      3. Estado e utilidades
-     4. Telas: início, treino, exercício, histórico, sheet "novo exercício"
+     4. Telas: início, treino, exercício, histórico, sheet "novo/editar exercício"
      5. Navegação, eventos globais e service worker
    ===================================================================== */
 
@@ -69,6 +69,12 @@ async function removerSerie(id) {
   if (error) throw error;
 }
 
+/** Renomeia um exercício em todas as séries já gravadas. */
+async function renomearExercicioNoServidor(de, para) {
+  const { error } = await sb.from('series').update({ exercicio: para }).eq('exercicio', de);
+  if (error) throw error;
+}
+
 
 /* =====================================================================
    2. FILA DE SINCRONIZAÇÃO (offline-first)
@@ -98,6 +104,11 @@ function enfileirarDelete(id) {
   gravarFila();
 }
 
+function enfileirarRenomear(de, para) {
+  fila.push({ op: 'rename', de, para });
+  gravarFila();
+}
+
 function idsPendentes() {
   return new Set(fila.filter((o) => o.op === 'insert').map((o) => o.serie.id));
 }
@@ -114,6 +125,7 @@ async function processarFila() {
       const op = fila[0];
       if (op.op === 'insert') await salvarSerie(op.serie);
       else if (op.op === 'delete') await removerSerie(op.id);
+      else if (op.op === 'rename') await renomearExercicioNoServidor(op.de, op.para);
       fila.shift();
       gravarFila();
     }
@@ -168,16 +180,19 @@ function atualizarSync() {
    ===================================================================== */
 
 const DIAS = ['A', 'B', 'C', 'D'];
+const NOMES_TREINO = { A: 'Peito Day', B: 'Costas Day', C: 'Leg Day', D: 'Ombro Day' };
+const REPS_PADRAO = 12;
 
 const estado = {
   tela: 'inicio',
   dia: null,
   exercicio: null,
-  reps: 10,
+  reps: REPS_PADRAO,
   carga: null,      // número ou null (campo vazio)
   semCarga: false,
   filtroDia: 'todos',
   filtroEx: 'todos',
+  editando: null,   // nome do exercício aberto no sheet de edição
 };
 
 let exerciciosPorDia = Object.assign({ A: [], B: [], C: [], D: [] }, store.ler(CHAVES.exercicios, {}));
@@ -209,13 +224,14 @@ function dataCurta(d) {
   return `${sem}, ${d.getDate()} ${mes}`;
 }
 
-function rotuloData(chave) {
+function partesData(chave) {
   const [a, m, d] = chave.split('-').map(Number);
   const data = new Date(a, m - 1, d);
   const ontem = new Date(); ontem.setDate(ontem.getDate() - 1);
-  if (chave === hojeChave()) return `Hoje · ${dataCurta(data)}`;
-  if (chave === chaveData(ontem)) return `Ontem · ${dataCurta(data)}`;
-  return dataCurta(data);
+  let titulo = capitalizar(data.toLocaleDateString('pt-BR', { weekday: 'long' }));
+  if (chave === hojeChave()) titulo = 'Hoje';
+  else if (chave === chaveData(ontem)) titulo = 'Ontem';
+  return { dia: d, titulo, sub: data.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }) };
 }
 
 function fmtKg(n) {
@@ -224,6 +240,15 @@ function fmtKg(n) {
 
 function fmtSerie(reps, carga) {
   return carga == null ? `${reps} reps` : `${reps} × ${fmtKg(carga)} kg`;
+}
+
+function fmtVolume(kg) {
+  if (kg >= 1000) return `${(kg / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} t`;
+  return `${fmtKg(Math.round(kg))} kg`;
+}
+
+function volumeDe(series) {
+  return series.reduce((acc, s) => acc + (s.carga_kg == null ? 0 : s.repeticoes * s.carga_kg), 0);
 }
 
 function lerNumero(txt) {
@@ -241,6 +266,37 @@ function seriesHoje(dia, exercicio) {
   return cache
     .filter((s) => s.dia_treino === dia && s.exercicio === exercicio && chaveData(s.criado_em) === hoje)
     .sort((a, b) => a.numero_serie - b.numero_serie);
+}
+
+/* Séries idênticas (mesmas reps e carga) viram um único grupo, na ordem da primeira. */
+function chaveGrupo(s) { return `${s.repeticoes}|${s.carga_kg ?? ''}`; }
+
+function agruparSeries(series) {
+  const grupos = new Map();
+  series.forEach((s) => {
+    const k = chaveGrupo(s);
+    if (!grupos.has(k)) grupos.set(k, []);
+    grupos.get(k).push(s);
+  });
+  return [...grupos.values()];
+}
+
+function criarChipSerie(grupo, classe) {
+  const s = grupo[0];
+  const el = document.createElement('span');
+  el.className = classe;
+  el.dataset.chave = chaveGrupo(s);
+  el.innerHTML = '<span></span>';
+  el.lastChild.textContent = fmtSerie(s.repeticoes, s.carga_kg);
+  if (grupo.length > 1) {
+    el.setAttribute('aria-label', `${grupo.length} séries de ${fmtSerie(s.repeticoes, s.carga_kg)}`);
+    el.insertAdjacentHTML('beforeend', '<span class="chip-x" aria-hidden="true"></span>');
+    el.lastChild.textContent = `${grupo.length}x`;
+  } else {
+    el.insertAdjacentHTML('afterbegin', '<span class="chip-n"></span>');
+    el.firstChild.textContent = 'S' + s.numero_serie;
+  }
+  return el;
 }
 
 function ultimaSerieDe(exercicio) {
@@ -277,7 +333,7 @@ function renderInicio() {
     const dia = btn.dataset.dia;
     const eUltimo = dia === ultimoDia;
     btn.classList.toggle('is-last', eUltimo);
-    btn.setAttribute('aria-label', `Treino ${dia}${eUltimo ? ', último escolhido' : ''}`);
+    btn.setAttribute('aria-label', `${NOMES_TREINO[dia]}${eUltimo ? ', último escolhido' : ''}`);
     const top = btn.querySelector('.dia-top');
     const badge = top.querySelector('.badge-ultimo');
     if (eUltimo && !badge) top.insertAdjacentHTML('beforeend', '<span class="badge-ultimo">ÚLTIMO</span>');
@@ -293,7 +349,7 @@ function renderInicio() {
       quando = k === hojeChave() ? ' · hoje' : ' · ' + dataCurta(new Date(ultimaDoDia.criado_em));
     }
     info.innerHTML = 'Último: <strong></strong><span></span>';
-    info.querySelector('strong').textContent = `Treino ${ultimoDia}`;
+    info.querySelector('strong').textContent = NOMES_TREINO[ultimoDia];
     info.querySelector('span').textContent = quando;
   } else {
     info.textContent = 'Toque no treino de hoje para começar.';
@@ -315,7 +371,7 @@ function escolherDia(dia) {
 function resumoExercicio(nome) {
   const hoje = seriesHoje(estado.dia, nome);
   if (hoje.length) {
-    return { hoje: hoje.length, texto: 'Hoje: ' + hoje.map((s) => fmtSerie(s.repeticoes, s.carga_kg)).join(' · ') };
+    return { hoje: hoje.length, texto: 'Hoje: ' + agruparSeries(hoje).map((g) => (g.length > 1 ? `${g.length}x ` : '') + fmtSerie(g[0].repeticoes, g[0].carga_kg)).join(' · ') };
   }
   const ultima = ultimaSerieDe(nome);
   if (!ultima) return { hoje: 0, texto: 'Sem registro ainda' };
@@ -327,7 +383,7 @@ function resumoExercicio(nome) {
 
 function renderTreino() {
   const dia = estado.dia;
-  $('#treino-dia').textContent = dia;
+  $('#treino-dia').textContent = NOMES_TREINO[dia];
   $('#treino-data').textContent = dataCurta(new Date()).toUpperCase();
 
   const totalHoje = cache.filter((s) => s.dia_treino === dia && chaveData(s.criado_em) === hojeChave()).length;
@@ -351,7 +407,7 @@ function renderTreino() {
         : '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>'}`;
     btn.querySelector('.ex-title').textContent = nome;
     btn.querySelector('.ex-sub').textContent = r.texto;
-    ligarLongPress(btn, () => removerExercicioDoDia(nome));
+    ligarLongPress(btn, () => abrirEdicao(nome));
     btn.addEventListener('click', () => {
       if (btn.dataset.longpress) { delete btn.dataset.longpress; return; }
       abrirExercicio(nome);
@@ -381,22 +437,32 @@ function ligarLongPress(el, acao) {
 }
 
 function removerExercicioDoDia(nome) {
-  if (!confirm(`Remover "${nome}" do Treino ${estado.dia}?\nAs séries já registradas continuam no histórico.`)) return;
+  if (!confirm(`Remover "${nome}" do ${NOMES_TREINO[estado.dia]}?\nAs séries já registradas continuam no histórico.`)) return;
   exerciciosPorDia[estado.dia] = exerciciosPorDia[estado.dia].filter((n) => n !== nome);
   gravarExercicios();
+  fecharSheet();
   renderTreino();
 }
 
 
 /* =====================================================================
-   4c. SHEET "NOVO EXERCÍCIO"
+   4c. SHEET "NOVO / EDITAR EXERCÍCIO"
    ===================================================================== */
 
+function limparErroNome() {
+  $('#novo-nome').classList.remove('is-invalid');
+  $('#novo-erro').hidden = true;
+}
+
 function abrirSheet() {
-  $('#sheet-eyebrow').textContent = `ADICIONAR AO TREINO ${estado.dia}`;
+  estado.editando = null;
+  $('#sheet-eyebrow').textContent = `ADICIONAR · ${NOMES_TREINO[estado.dia].toUpperCase()}`;
+  $('#sheet-title').textContent = 'Novo exercício';
+  $('#sheet-salvar').textContent = 'Adicionar';
+  $('#sheet-remover').hidden = true;
   const input = $('#novo-nome');
   input.value = '';
-  input.classList.remove('is-invalid');
+  limparErroNome();
 
   // Sugestões: exercícios já usados em outros dias (zero digitação).
   const doDia = new Set((exerciciosPorDia[estado.dia] || []).map((n) => n.toLowerCase()));
@@ -423,7 +489,56 @@ function abrirSheet() {
   if (!sugestoes.length) input.focus();
 }
 
+function abrirEdicao(nome) {
+  estado.editando = nome;
+  $('#sheet-eyebrow').textContent = `EDITAR · ${NOMES_TREINO[estado.dia].toUpperCase()}`;
+  $('#sheet-title').textContent = 'Renomear exercício';
+  $('#sheet-salvar').textContent = 'Salvar';
+  $('#sheet-remover').hidden = false;
+  $('#sugestoes-wrap').hidden = true;
+  $('#novo-nome').value = nome;
+  limparErroNome();
+  $('#sheet-backdrop').hidden = false;
+  $('#sheet-novo').hidden = false;
+  ajustarSheetAoTeclado();
+}
+
+/* O nome é a identidade do exercício: renomeia em todos os dias, no cache e no servidor. */
+function salvarEdicao(nomeBruto) {
+  const de = estado.editando;
+  const para = normalizarNome(nomeBruto);
+  const input = $('#novo-nome');
+  if (!para) { input.classList.add('is-invalid'); input.focus(); return; }
+  if (para === de) { fecharSheet(); return; }
+
+  const existentes = new Set(cache.map((s) => s.exercicio));
+  DIAS.forEach((d) => (exerciciosPorDia[d] || []).forEach((n) => existentes.add(n)));
+  existentes.delete(de);
+  if ([...existentes].some((n) => n.toLowerCase() === para.toLowerCase())) {
+    input.classList.add('is-invalid');
+    $('#novo-erro').textContent = 'Já existe um exercício com esse nome.';
+    $('#novo-erro').hidden = false;
+    return;
+  }
+
+  DIAS.forEach((d) => {
+    exerciciosPorDia[d] = (exerciciosPorDia[d] || []).map((n) => (n === de ? para : n));
+  });
+  gravarExercicios();
+  cache.forEach((s) => { if (s.exercicio === de) s.exercicio = para; });
+  gravarCache();
+  enfileirarRenomear(de, para);
+  if (estado.filtroEx === de) estado.filtroEx = para;
+  if (estado.exercicio === de) estado.exercicio = para;
+
+  vibrar(10);
+  fecharSheet();
+  renderTreino();
+  processarFila();
+}
+
 function fecharSheet() {
+  estado.editando = null;
   $('#novo-nome').blur();
   $('#sheet-backdrop').hidden = true;
   $('#sheet-novo').hidden = true;
@@ -465,7 +580,7 @@ let timerToast = null;
 function abrirExercicio(nome) {
   estado.exercicio = nome;
   const ultima = ultimaSerieDe(nome);
-  estado.reps = ultima ? ultima.repeticoes : 10;
+  estado.reps = ultima ? ultima.repeticoes : REPS_PADRAO;
   estado.carga = ultima ? ultima.carga_kg : null;
   estado.semCarga = ultima ? ultima.carga_kg == null : false;
   vibrar(8);
@@ -474,7 +589,7 @@ function abrirExercicio(nome) {
 
 function montarGradeReps() {
   const grid = $('#reps-grid');
-  for (let v = 1; v <= 20; v++) {
+  for (let v = 10; v <= 15; v++) {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'rep-btn';
@@ -523,7 +638,7 @@ function cargaAtual() {
 
 function renderExercicio({ animarNova = false } = {}) {
   $('#ex-nome').textContent = estado.exercicio;
-  $('#ex-back-label').textContent = `Treino ${estado.dia}`;
+  $('#ex-back-label').textContent = NOMES_TREINO[estado.dia];
 
   const feitas = seriesHoje(estado.dia, estado.exercicio);
   $('#serie-num').textContent = feitas.length + 1;
@@ -531,16 +646,15 @@ function renderExercicio({ animarNova = false } = {}) {
   const pend = idsPendentes();
   const chips = $('#feitas-chips');
   chips.innerHTML = '';
-  feitas.forEach((s, i) => {
-    const c = document.createElement('span');
-    c.className = 'chip' + (animarNova && i === feitas.length - 1 ? ' is-new' : '');
-    c.innerHTML = '<span class="chip-n"></span><span></span>';
-    c.firstChild.textContent = 'S' + s.numero_serie;
-    c.lastChild.textContent = fmtSerie(s.repeticoes, s.carga_kg);
-    if (pend.has(s.id)) c.title = 'Aguardando envio';
+  const chaveNova = animarNova && feitas.length ? chaveGrupo(feitas[feitas.length - 1]) : null;
+  let chipNovo = null;
+  agruparSeries(feitas).forEach((grupo) => {
+    const c = criarChipSerie(grupo, 'chip');
+    if (c.dataset.chave === chaveNova) { c.classList.add('is-new'); chipNovo = c; }
+    if (grupo.some((s) => pend.has(s.id))) c.title = 'Aguardando envio';
     chips.appendChild(c);
   });
-  chips.scrollLeft = chips.scrollWidth;
+  chips.scrollLeft = chipNovo ? chipNovo.offsetLeft - 16 : chips.scrollWidth;
 
   $('#feitas-vazio').hidden = feitas.length > 0;
   $('#btn-desfazer').hidden = feitas.length === 0;
@@ -607,7 +721,10 @@ function desfazerUltima() {
   const ultima = feitas[feitas.length - 1];
   if (!ultima) return;
 
-  const chip = $('#feitas-chips').lastElementChild;
+  // O chip só sai da tela se esta era a única série do grupo; senão, só o "2x" diminui.
+  const k = chaveGrupo(ultima);
+  const unica = feitas.filter((s) => chaveGrupo(s) === k).length === 1;
+  const chip = unica ? $('#feitas-chips').querySelector(`[data-chave="${k}"]`) : null;
   const aplicar = () => {
     cache = cache.filter((s) => s.id !== ultima.id);
     gravarCache();
@@ -673,6 +790,105 @@ function renderFiltroExercicios() {
   sel.value = estado.filtroEx;
 }
 
+/* Compara a maior carga de cada dia com o dia anterior do mesmo exercício. */
+function evolucaoExercicios() {
+  const porEx = new Map();
+  cache.forEach((s) => {
+    if (s.carga_kg == null) return;
+    if (!porEx.has(s.exercicio)) porEx.set(s.exercicio, new Map());
+    const porData = porEx.get(s.exercicio);
+    const k = chaveData(s.criado_em);
+    porData.set(k, Math.max(porData.get(k) ?? 0, s.carga_kg));
+  });
+
+  const evolucao = new Map();
+  porEx.forEach((porData, nome) => {
+    let anterior = null;
+    let melhor = null;
+    [...porData.keys()].sort().forEach((k) => {
+      const max = porData.get(k);
+      if (anterior != null) evolucao.set(`${nome}|${k}`, { delta: max - anterior, recorde: max > melhor });
+      anterior = max;
+      melhor = Math.max(melhor ?? 0, max);
+    });
+  });
+  return evolucao;
+}
+
+function renderResumoHistorico(filtradas) {
+  const box = $('#hist-resumo');
+  box.innerHTML = '';
+  if (!filtradas.length) return;
+
+  const treinos = new Set(filtradas.map((s) => `${chaveData(s.criado_em)}|${s.dia_treino}`)).size;
+  const stats = [
+    [treinos, treinos === 1 ? 'treino' : 'treinos'],
+    [filtradas.length, filtradas.length === 1 ? 'série' : 'séries'],
+    [fmtVolume(volumeDe(filtradas)), 'volume'],
+  ];
+  const tiles = document.createElement('div');
+  tiles.className = 'hist-stats';
+  stats.forEach(([valor, rotulo]) => {
+    const t = document.createElement('div');
+    t.className = 'hist-stat';
+    t.innerHTML = '<strong></strong><span></span>';
+    t.firstChild.textContent = valor;
+    t.lastChild.textContent = rotulo;
+    tiles.appendChild(t);
+  });
+  box.appendChild(tiles);
+
+  // Últimos 7 dias: em quais dias houve treino
+  const semana = document.createElement('div');
+  semana.className = 'hist-semana';
+  semana.setAttribute('role', 'img');
+  const rotulosAria = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(); d.setDate(d.getDate() - i);
+    const k = chaveData(d);
+    const dias = [...new Set(filtradas.filter((s) => chaveData(s.criado_em) === k).map((s) => s.dia_treino))].sort();
+    if (dias.length) rotulosAria.push(`${dataCurta(d)}: ${dias.map((x) => NOMES_TREINO[x]).join(' e ')}`);
+    const c = document.createElement('div');
+    c.className = 'hist-semana-dia' + (i === 0 ? ' is-hoje' : '');
+    c.innerHTML = '<span></span><b></b>';
+    c.firstChild.textContent = 'DSTQQSS'[d.getDay()];
+    c.lastChild.textContent = dias.join('');
+    c.lastChild.classList.toggle('is-on', dias.length > 0);
+    semana.appendChild(c);
+  }
+  semana.setAttribute('aria-label', rotulosAria.length
+    ? `Últimos 7 dias. ${rotulosAria.join('. ')}.`
+    : 'Nenhum treino nos últimos 7 dias.');
+  box.appendChild(semana);
+}
+
+function fmtDuracao(series) {
+  const tempos = series.map((s) => new Date(s.criado_em).getTime());
+  const min = Math.round((Math.max(...tempos) - Math.min(...tempos)) / 60000);
+  if (min < 1) return '';
+  return min < 60 ? `${min} min` : `${Math.floor(min / 60)}h${pad2(min % 60)}`;
+}
+
+function criarTagEvolucao(ev) {
+  if (!ev || (!ev.delta && !ev.recorde)) return null;
+  const tag = document.createElement('span');
+  const valor = `${fmtKg(Math.abs(ev.delta))} kg`;
+  if (ev.recorde) {
+    tag.className = 'hist-tag is-pr';
+    tag.textContent = `PR +${valor}`;
+    tag.setAttribute('aria-label', `Recorde: mais ${valor}`);
+  } else if (ev.delta > 0) {
+    tag.className = 'hist-tag is-up';
+    tag.textContent = `▲ ${valor}`;
+    tag.setAttribute('aria-label', `Mais ${valor} que a vez anterior`);
+  } else {
+    tag.className = 'hist-tag';
+    tag.textContent = `▼ ${valor}`;
+    tag.setAttribute('aria-label', `Menos ${valor} que a vez anterior`);
+  }
+  return tag;
+}
+
 function renderHistorico() {
   renderFiltroExercicios();
   document.querySelectorAll('#filtro-dia button').forEach((b) => {
@@ -684,6 +900,8 @@ function renderHistorico() {
     .filter((s) => estado.filtroEx === 'todos' || s.exercicio === estado.filtroEx)
     .slice()
     .sort((a, b) => b.criado_em.localeCompare(a.criado_em));
+
+  renderResumoHistorico(filtradas);
 
   // data → dia de treino → exercício → séries
   const porData = new Map();
@@ -698,51 +916,58 @@ function renderHistorico() {
   });
 
   const pend = idsPendentes();
-  const ultimoDia = store.ler(CHAVES.ultimoDia, null);
+  const evolucao = evolucaoExercicios();
   const frag = document.createDocumentFragment();
 
   porData.forEach((porDia, k) => {
+    const partes = partesData(k);
     const h = document.createElement('h2');
     h.className = 'hist-date';
-    h.textContent = rotuloData(k);
+    h.innerHTML = '<span class="hist-date-num"></span><span class="hist-date-txt"><strong></strong><span></span></span>';
+    h.querySelector('.hist-date-num').textContent = partes.dia;
+    h.querySelector('strong').textContent = partes.titulo;
+    h.querySelector('.hist-date-txt span').textContent = partes.sub;
     frag.appendChild(h);
 
     porDia.forEach((porEx, dia) => {
-      const total = [...porEx.values()].reduce((acc, arr) => acc + arr.length, 0);
+      const doTreino = [...porEx.values()].flat();
+      const meta = [`${doTreino.length} ${doTreino.length === 1 ? 'série' : 'séries'}`];
+      const volume = volumeDe(doTreino);
+      if (volume > 0) meta.push(fmtVolume(volume));
+      if (estado.filtroEx === 'todos') {
+        const duracao = fmtDuracao(doTreino);
+        if (duracao) meta.push(duracao);
+      }
+
       const grupo = document.createElement('section');
       grupo.className = 'hist-group';
       grupo.innerHTML = `
         <div class="hist-group-head">
-          <span class="hist-badge${dia === ultimoDia ? ' is-accent' : ''}" aria-hidden="true"></span>
+          <span class="hist-badge" aria-hidden="true"></span>
           <div class="hist-group-title"><strong></strong><span></span></div>
-        </div>
-        <div class="hist-card"></div>`;
+        </div>`;
       grupo.querySelector('.hist-badge').textContent = dia;
-      grupo.querySelector('strong').textContent = `Treino ${dia}`;
-      grupo.querySelector('.hist-group-title span').textContent = `${total} ${total === 1 ? 'série' : 'séries'}`;
+      grupo.querySelector('strong').textContent = NOMES_TREINO[dia];
+      grupo.querySelector('.hist-group-title span').textContent = meta.join(' · ');
 
-      const card = grupo.querySelector('.hist-card');
       // exercícios na ordem em que foram feitos
       [...porEx.entries()].reverse().forEach(([nome, series]) => {
         series.sort((a, b) => a.numero_serie - b.numero_serie);
         const ex = document.createElement('div');
         ex.className = 'hist-ex';
-        ex.innerHTML = '<div class="hist-ex-head"><strong></strong><span></span></div><div class="hist-sets"></div>';
+        ex.innerHTML = '<div class="hist-ex-head"><strong></strong></div><div class="hist-sets"></div>';
         ex.querySelector('strong').textContent = nome;
-        ex.querySelector('.hist-ex-head span').textContent = `${series.length} ${series.length === 1 ? 'série' : 'séries'}`;
+        const tag = criarTagEvolucao(evolucao.get(`${nome}|${k}`));
+        if (tag) ex.querySelector('.hist-ex-head').appendChild(tag);
         const sets = ex.querySelector('.hist-sets');
-        series.forEach((s) => {
-          const el = document.createElement('span');
-          el.className = 'hist-set';
-          el.innerHTML = '<span class="chip-n"></span><span></span>';
-          el.firstChild.textContent = 'S' + s.numero_serie;
-          el.lastChild.textContent = fmtSerie(s.repeticoes, s.carga_kg);
-          if (pend.has(s.id)) {
+        agruparSeries(series).forEach((g) => {
+          const el = criarChipSerie(g, 'hist-set');
+          if (g.some((s) => pend.has(s.id))) {
             el.insertAdjacentHTML('beforeend', '<span class="pend" title="Aguardando envio" aria-label="aguardando envio"></span>');
           }
           sets.appendChild(el);
         });
-        card.appendChild(ex);
+        grupo.appendChild(ex);
       });
       frag.appendChild(grupo);
     });
@@ -825,8 +1050,14 @@ function iniciar() {
   $('#btn-novo-ex').addEventListener('click', abrirSheet);
   $('#sheet-cancelar').addEventListener('click', fecharSheet);
   $('#sheet-backdrop').addEventListener('click', fecharSheet);
-  $('#sheet-novo').addEventListener('submit', (e) => { e.preventDefault(); adicionarExercicio($('#novo-nome').value); });
-  $('#novo-nome').addEventListener('input', (e) => e.target.classList.remove('is-invalid'));
+  $('#sheet-remover').addEventListener('click', () => removerExercicioDoDia(estado.editando));
+  $('#sheet-novo').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const nome = $('#novo-nome').value;
+    if (estado.editando) salvarEdicao(nome);
+    else adicionarExercicio(nome);
+  });
+  $('#novo-nome').addEventListener('input', limparErroNome);
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#sheet-novo').hidden) fecharSheet(); });
   if (window.visualViewport) {
     visualViewport.addEventListener('resize', ajustarSheetAoTeclado);

@@ -1,5 +1,5 @@
 /* =========================================================
-   Série — registro rápido de treino
+   FastRep — registro rápido de treino
    Modo escuro, alto contraste, pensado para iPhone (390px)
    ========================================================= */
 
@@ -189,7 +189,7 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 }
 .dia-top { display: flex; align-items: center; justify-content: space-between; }
 .dia-label { font-size: 14px; font-weight: 600; letter-spacing: 0.08em; color: var(--muted); }
-.dia-letra { font-family: var(--font-display); font-weight: 800; font-size: 96px; line-height: 0.85; }
+.dia-nome { font-family: var(--font-display); font-weight: 800; font-size: 46px; line-height: 0.92; }
 .dia-btn.is-last { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .dia-btn.is-last .dia-label { color: var(--on-accent); font-weight: 700; }
 .badge-ultimo {
@@ -270,16 +270,25 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 
 .chips {
   display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none;
-  margin: 0 calc(var(--pad) * -1); padding: 0 var(--pad);
+  margin: 0 calc(var(--pad) * -1); padding: 8px var(--pad) 0;   /* topo livre para o selo "2x" */
+  position: relative;
 }
 .chips::-webkit-scrollbar { display: none; }
 .chip {
+  position: relative;
   flex-shrink: 0; height: 40px; padding: 0 12px; border-radius: 12px;
   background: var(--surface); border: 1px solid var(--line);
   display: flex; align-items: center; gap: 8px;
   font-size: 16px; font-weight: 600; white-space: nowrap;
 }
 .chip-n { font-size: 13px; font-weight: 700; color: var(--muted); }
+.chip-x {
+  position: absolute; top: -8px; right: -4px;
+  padding: 2px 6px; border-radius: 999px;
+  background: var(--accent); color: var(--on-accent);
+  box-shadow: 0 0 0 2px var(--bg);
+  font-family: var(--font-display); font-size: 14px; font-weight: 800; line-height: 1;
+}
 .chip.is-new { animation: chipin 240ms ease-out; border-color: var(--ok); }
 .chip.is-leaving { animation: chipout 180ms ease-in forwards; }
 @keyframes chipin { from { opacity: 0; transform: scale(0.7); } to { opacity: 1; transform: scale(1); } }
@@ -295,7 +304,7 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 }
 .step-val { min-width: 56px; text-align: center; font-family: var(--font-display); font-weight: 800; font-size: 36px; line-height: 1; }
 
-.reps-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.reps-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
 .rep-btn {
   height: clamp(48px, 6.2dvh, 54px);
   border-radius: var(--r-sm);
@@ -370,35 +379,72 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
   flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
   margin: 0 calc(var(--pad) * -1); padding: 4px var(--pad) 24px;
 }
-.hist-date {
-  margin: 18px 0 10px; font-size: 13px; font-weight: 700; letter-spacing: 0.1em; color: var(--muted);
-  text-transform: uppercase;
+.hist-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.hist-stat {
+  padding: 14px 12px 12px; border-radius: var(--r-md);
+  background: var(--surface); border: 1px solid var(--line);
+  display: flex; flex-direction: column; gap: 4px; min-width: 0;
 }
-.hist-date:first-child { margin-top: 4px; }
-.hist-group { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
-.hist-group-head { display: flex; align-items: center; gap: 10px; }
-.hist-badge {
-  width: 36px; height: 36px; border-radius: 10px;
+.hist-stat strong { font-family: var(--font-display); font-weight: 800; font-size: 32px; line-height: 1; white-space: nowrap; }
+.hist-stat span { font-size: 13px; font-weight: 500; color: var(--muted); }
+
+.hist-semana {
+  margin-top: 8px; padding: 12px; border-radius: var(--r-md);
+  background: var(--surface); border: 1px solid var(--line);
+  display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px;
+}
+.hist-semana-dia { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.hist-semana-dia span { font-size: 12px; font-weight: 600; color: var(--muted); }
+.hist-semana-dia.is-hoje span { color: var(--text); font-weight: 700; }
+.hist-semana-dia b {
+  width: 36px; height: 36px; border-radius: 50%;
   background: var(--surface-2);
   display: grid; place-items: center;
-  font-family: var(--font-display); font-weight: 800; font-size: 22px;
+  font-family: var(--font-display); font-size: 18px; font-weight: 800;
 }
-.hist-badge.is-accent { background: var(--accent); color: var(--on-accent); }
-.hist-group-title { display: flex; flex-direction: column; }
-.hist-group-title strong { font-size: 17px; font-weight: 700; }
-.hist-group-title span { font-size: 14px; color: var(--muted); }
-.hist-card { border-radius: 20px; background: var(--surface); border: 1px solid var(--line); }
-.hist-ex { padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
-.hist-ex + .hist-ex { border-top: 1px solid var(--line); }
-.hist-ex-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-.hist-ex-head strong { font-size: 18px; font-weight: 600; }
-.hist-ex-head span { font-size: 14px; color: var(--muted); white-space: nowrap; }
-.hist-sets { display: flex; flex-wrap: wrap; gap: 6px; }
+.hist-semana-dia.is-hoje b { box-shadow: inset 0 0 0 2px var(--line-strong); }
+.hist-semana-dia b.is-on { background: var(--accent); color: var(--on-accent); box-shadow: none; }
+
+.hist-date { margin: 26px 0 12px; display: flex; align-items: center; gap: 12px; font-size: inherit; font-weight: inherit; }
+.hist-date-num { font-family: var(--font-display); font-weight: 800; font-size: 44px; line-height: 0.9; }
+.hist-date-txt { display: flex; flex-direction: column; }
+.hist-date-txt strong { font-size: 17px; font-weight: 700; }
+.hist-date-txt span { font-size: 13px; color: var(--muted); }
+
+.hist-group {
+  margin-bottom: 12px; border-radius: 20px;
+  background: linear-gradient(180deg, var(--surface-2), var(--surface) 88px);
+  border: 1px solid var(--line);
+}
+.hist-group-head { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
+.hist-badge {
+  width: 44px; height: 44px; border-radius: var(--r-sm); flex-shrink: 0;
+  background: var(--accent); color: var(--on-accent);
+  display: grid; place-items: center;
+  font-family: var(--font-display); font-weight: 800; font-size: 28px;
+}
+.hist-group-title { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.hist-group-title strong { font-family: var(--font-display); font-size: 26px; font-weight: 800; line-height: 1; }
+.hist-group-title span { font-size: 14px; color: var(--text-2); }
+.hist-ex { padding: 12px 16px 14px; display: flex; flex-direction: column; gap: 12px; border-top: 1px solid var(--line); }
+.hist-ex-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.hist-ex-head strong { font-size: 17px; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.hist-tag {
+  flex-shrink: 0; padding: 3px 8px; border-radius: 999px;
+  background: var(--surface-2); color: var(--muted);
+  font-size: 13px; font-weight: 700; white-space: nowrap;
+}
+.hist-tag.is-up { background: var(--ok-bg); color: var(--ok); }
+.hist-tag.is-pr { background: var(--accent); color: var(--on-accent); }
+.hist-sets { display: flex; flex-wrap: wrap; gap: 10px 8px; }
 .hist-set {
-  height: 32px; padding: 0 10px; border-radius: 10px; background: var(--surface-2);
+  position: relative;
+  height: 34px; padding: 0 10px; border-radius: 10px;
+  background: var(--surface-2); border: 1px solid var(--line);
   display: flex; align-items: center; gap: 6px; font-size: 15px; font-weight: 600; white-space: nowrap;
 }
 .hist-set .chip-n { font-size: 12px; }
+.hist-set .chip-x { box-shadow: 0 0 0 2px var(--surface); }
 .hist-set .pend { width: 6px; height: 6px; border-radius: 50%; background: var(--warn); }
 
 .filter-bar {
@@ -424,9 +470,8 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .dia-chips button {
   height: 48px; border-radius: var(--r-sm);
   background: var(--surface-2); border: 1px solid var(--line);
-  font-size: 20px; font-weight: 700;
+  font-size: 15px; font-weight: 700;
 }
-.dia-chips button.todos { font-size: 15px; }
 .dia-chips button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 
 /* ---------- Sheet: novo exercício ---------- */
@@ -455,6 +500,7 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .field input:focus { border-color: var(--accent); }
 .field input::placeholder { color: #6F7872; }
 .field input.is-invalid { border-color: var(--danger); }
+.field-erro { margin: 0; font-size: 14px; font-weight: 500; color: var(--danger); }
 .sugestoes { display: flex; flex-wrap: wrap; gap: 8px; max-height: 112px; overflow-y: auto; }
 .sugestoes button {
   height: 48px; padding: 0 16px; border-radius: 999px;
@@ -465,6 +511,8 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .btn-sec, .btn-pri { height: 60px; border-radius: var(--r-md); font-size: 18px; }
 .btn-sec { background: var(--surface-2); border: 1px solid var(--line); font-weight: 600; }
 .btn-pri { background: var(--accent); color: var(--on-accent); font-weight: 700; }
+
+.btn-remover { height: 48px; color: var(--danger); font-size: 16px; font-weight: 600; }
 
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes slideup { from { transform: translateY(100%); } to { transform: translateY(0); } }

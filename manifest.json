@@ -1,6 +1,6 @@
 {
-  "name": "Série — registro de treino",
-  "short_name": "Série",
+  "name": "FastRep — registro de treino",
+  "short_name": "FastRep",
   "description": "Registre cada série da academia em poucos toques.",
   "lang": "pt-BR",
   "start_url": "./index.html",
