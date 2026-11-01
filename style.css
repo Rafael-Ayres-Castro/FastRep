@@ -459,7 +459,7 @@ body.sheet-aberto .view:not([hidden]) { transform: scale(0.96); }
 .cta svg { width: 22px; height: 22px; stroke-width: 2.6; }
 
 /* ---------- TELA 4: histórico ---------- */
-.view-historico { padding-bottom: 0; overflow: hidden; gap: 10px; }
+.view-historico { padding-bottom: 0; overflow: hidden; gap: 10px; touch-action: pan-y pinch-zoom; }   /* o dedo só rola na vertical */
 .filter-bar { display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; }
 .select-wrap {
   position: relative; height: 46px; border-radius: 999px;
@@ -483,7 +483,7 @@ body.sheet-aberto .view:not([hidden]) { transform: scale(0.96); }
 .dia-chips button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
 
 .hist-scroll {
-  flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+  flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
   margin: 0 calc(var(--pad) * -1);
   padding: 6px var(--pad) calc(var(--tab-base) + var(--tab-h) + 24px);
 }
