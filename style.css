@@ -41,6 +41,8 @@
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --tab-h: 64px;
+  /* A barra de abas invade a área segura: para logo acima do traço de início do iPhone (13px). */
+  --tab-base: max(4px, calc(var(--safe-bottom) - 20px));
   --r-lg: 24px;
   --r-md: 20px;
   --r-sm: 14px;
@@ -124,7 +126,7 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
   transition: transform 380ms var(--ease-drawer);
 }
 /* Telas com abas: o conteúdo termina acima da barra. */
-.view-aba { padding-bottom: calc(var(--safe-bottom) + var(--tab-h) + 14px); }
+.view-aba { padding-bottom: calc(var(--tab-base) + var(--tab-h) + 14px); }
 
 /* A tela que sai continua visível por baixo (ou por cima, ao voltar) enquanto a nova entra. */
 .view.is-leaving { position: fixed; top: 0; left: 0; right: 0; z-index: 0; pointer-events: none; }
@@ -260,7 +262,7 @@ body.sheet-aberto .view:not([hidden]) { transform: scale(0.96); }
 .tabbar {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
   max-width: 480px; margin: 0 auto;
-  padding: 8px var(--pad) calc(var(--safe-bottom) + 6px);
+  padding: 8px var(--pad) var(--tab-base);
   background: var(--bg);
   border-top: 1px solid var(--line);
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -482,7 +484,7 @@ body.sheet-aberto .view:not([hidden]) { transform: scale(0.96); }
 .hist-scroll {
   flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
   margin: 0 calc(var(--pad) * -1);
-  padding: 6px var(--pad) calc(var(--safe-bottom) + var(--tab-h) + 24px);
+  padding: 6px var(--pad) calc(var(--tab-base) + var(--tab-h) + 24px);
 }
 .hist-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .hist-stat {
