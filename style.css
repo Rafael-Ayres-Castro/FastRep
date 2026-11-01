@@ -501,6 +501,7 @@ body.sheet-aberto .view:not([hidden]) { transform: scale(0.96); }
 #treino-semana { flex-shrink: 0; }
 #treino-semana .seletor-dia { margin-top: 0; }
 .seletor-head { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px 44px; align-items: center; }
+.seletor-head.semana-nav { grid-template-columns: 44px minmax(0, 1fr) 44px; flex-shrink: 0; }
 .seletor-periodo { text-align: center; font-size: 14px; font-weight: 500; color: var(--text-2); font-variant-numeric: tabular-nums; }
 button.seletor-periodo { height: 34px; justify-self: center; padding: 0 12px; border-radius: 999px; background: var(--accent); color: var(--on-accent); white-space: nowrap; }
 .nav-dia { position: relative; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; color: var(--text); }

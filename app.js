@@ -513,18 +513,16 @@ function selecionarDia(chave, aoMudar, manter = false) {
   aoMudar();
 }
 
-/* Seletor de dia: semana de segunda a domingo, setas para trocar de semana e calendário
-   para ir a qualquer data. Dia treinado ganha a cor do treino (branco se houve mais de um). */
-function criarSeletorDia(series, aoMudar, { hojePadrao = false } = {}) {
-  const hoje = hojeChave();
+/* Os sete dias, de segunda a domingo, da semana em que a faixa está. */
+function diasDaSemana() {
   const inicio = new Date();
   inicio.setDate(inicio.getDate() - (inicio.getDay() + 6) % 7 + estado.semanaDesl * 7);
-  const dias = Array.from({ length: 7 }, (_, i) => { const d = new Date(inicio); d.setDate(d.getDate() + i); return d; });
+  return Array.from({ length: 7 }, (_, i) => { const d = new Date(inicio); d.setDate(d.getDate() + i); return d; });
+}
 
-  const box = document.createElement('div');
-  box.className = 'seletor-dia';
-  const head = document.createElement('div');
-  head.className = 'seletor-head';
+const periodoDaSemana = (dias) => `${dataCurtinha(chaveData(dias[0]))} – ${dataCurtinha(chaveData(dias[6]))}`;
+
+function criarSetasSemana(aoMudar) {
   const seta = (rotulo, caminho, delta, desativada) => {
     const b = document.createElement('button');
     b.type = 'button';
@@ -535,6 +533,19 @@ function criarSeletorDia(series, aoMudar, { hojePadrao = false } = {}) {
     b.addEventListener('click', () => { estado.semanaDesl += delta; vibrar(5); aoMudar(); });
     return b;
   };
+  return [seta('Semana anterior', 'm15 18-6-6 6-6', -1, false), seta('Próxima semana', 'm9 18 6-6-6-6', 1, estado.semanaDesl >= 0)];
+}
+
+/* Seletor de dia: semana de segunda a domingo, setas para trocar de semana e calendário
+   para ir a qualquer data. Dia treinado ganha a cor do treino (branco se houve mais de um). */
+function criarSeletorDia(series, aoMudar, { hojePadrao = false } = {}) {
+  const hoje = hojeChave();
+  const dias = diasDaSemana();
+
+  const box = document.createElement('div');
+  box.className = 'seletor-dia';
+  const head = document.createElement('div');
+  head.className = 'seletor-head';
   const meio = document.createElement(estado.diaSel ? 'button' : 'span');
   meio.className = 'seletor-periodo';
   if (estado.diaSel) {
@@ -544,7 +555,7 @@ function criarSeletorDia(series, aoMudar, { hojePadrao = false } = {}) {
     meio.setAttribute('aria-label', hojePadrao ? 'Voltar para hoje' : 'Ver todos os dias');
     meio.addEventListener('click', () => { estado.diaSel = null; estado.semanaDesl = 0; vibrar(5); aoMudar(); });
   } else {
-    meio.textContent = `${dataCurtinha(chaveData(dias[0]))} – ${dataCurtinha(chaveData(dias[6]))}`;
+    meio.textContent = periodoDaSemana(dias);
   }
   const cal = document.createElement('label');
   cal.className = 'nav-dia seletor-cal';
@@ -554,7 +565,8 @@ function criarSeletorDia(series, aoMudar, { hojePadrao = false } = {}) {
   campo.value = estado.diaSel || hoje;
   campo.addEventListener('click', () => { try { campo.showPicker(); } catch (e) { /* o toque já abre o seletor */ } });
   campo.addEventListener('change', () => { if (campo.value && campo.value <= hoje) selecionarDia(campo.value, aoMudar, true); });
-  head.append(seta('Semana anterior', 'm15 18-6-6 6-6', -1, false), meio, seta('Próxima semana', 'm9 18 6-6-6-6', 1, estado.semanaDesl >= 0), cal);
+  const [anterior, proxima] = criarSetasSemana(aoMudar);
+  head.append(anterior, meio, proxima, cal);
   box.appendChild(head);
 
   const semana = document.createElement('div');
@@ -1302,11 +1314,18 @@ function evolucaoExercicios() {
   return evolucao;
 }
 
-function renderResumoHistorico(filtradas, semFiltroDeDia) {
+function renderSemanaHistorico(dias) {
+  const periodo = document.createElement('span');
+  periodo.className = 'seletor-periodo';
+  periodo.textContent = periodoDaSemana(dias);
+  const [anterior, proxima] = criarSetasSemana(() => { renderHistorico(); $('#hist-scroll').scrollTop = 0; });
+  $('#hist-semana').replaceChildren(anterior, periodo, proxima);
+}
+
+function renderResumoHistorico(filtradas) {
   const box = $('#hist-resumo');
   box.innerHTML = '';
-  const seletor = criarSeletorDia(semFiltroDeDia, renderHistorico);
-  if (!filtradas.length) { box.appendChild(seletor); return; }
+  if (!filtradas.length) return;
 
   const treinos = new Set(filtradas.map((s) => `${chaveData(s.criado_em)}|${s.dia_treino}`)).size;
   const stats = [
@@ -1325,7 +1344,6 @@ function renderResumoHistorico(filtradas, semFiltroDeDia) {
     tiles.appendChild(t);
   });
   box.appendChild(tiles);
-  box.appendChild(seletor);
 }
 
 function fmtDuracao(series) {
@@ -1361,14 +1379,18 @@ function renderHistorico() {
     b.setAttribute('aria-pressed', String(b.dataset.f === estado.filtroDia));
   });
 
-  const semFiltroDeDia = cache
+  const dias = diasDaSemana();
+  renderSemanaHistorico(dias);
+  const [primeiroDia, ultimoDia] = [chaveData(dias[0]), chaveData(dias[6])];
+
+  const filtradas = cache
+    .filter((s) => { const k = chaveData(s.criado_em); return k >= primeiroDia && k <= ultimoDia; })
     .filter((s) => estado.filtroDia === 'todos' || s.dia_treino === estado.filtroDia)
     .filter((s) => estado.filtroEx === 'todos' || s.exercicio === estado.filtroEx)
     .slice()
     .sort((a, b) => b.criado_em.localeCompare(a.criado_em));
-  const filtradas = estado.diaSel ? semFiltroDeDia.filter((s) => chaveData(s.criado_em) === estado.diaSel) : semFiltroDeDia;
 
-  renderResumoHistorico(filtradas, semFiltroDeDia);
+  renderResumoHistorico(filtradas);
 
   // data → dia de treino → exercício → séries
   const porData = new Map();
@@ -1445,11 +1467,11 @@ function renderHistorico() {
   const vazio = $('#hist-vazio');
   vazio.hidden = filtradas.length > 0;
   if (!filtradas.length) {
-    vazio.textContent = estado.diaSel
-      ? `Nenhuma série em ${dataCurta(parseChave(estado.diaSel))}.`
-      : cache.length
-      ? 'Nenhuma série com esses filtros.'
-      : 'Nenhuma série registrada ainda. Bora treinar!';
+    vazio.textContent = !cache.length
+      ? 'Nenhuma série registrada ainda. Bora treinar!'
+      : estado.filtroDia !== 'todos' || estado.filtroEx !== 'todos'
+      ? 'Nenhuma série com esses filtros nesta semana.'
+      : 'Nenhum treino nesta semana.';
   }
 }
 
