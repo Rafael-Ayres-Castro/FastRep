@@ -57,10 +57,10 @@
     <p class="ultimo-info" id="ultimo-info"></p>
 
     <div class="dias-grid" id="dias-grid">
-      <button type="button" class="dia-btn" data-dia="A"><span class="dia-label">Treino A</span><span class="dia-nome">Peito<br>Day</span></button>
-      <button type="button" class="dia-btn" data-dia="B"><span class="dia-label">Treino B</span><span class="dia-nome">Costas<br>Day</span></button>
-      <button type="button" class="dia-btn" data-dia="C"><span class="dia-label">Treino C</span><span class="dia-nome">Leg<br>Day</span></button>
-      <button type="button" class="dia-btn" data-dia="D"><span class="dia-label">Treino D</span><span class="dia-nome">Ombro<br>Day</span></button>
+      <button type="button" class="dia-btn" data-dia="A"><span class="dia-label">Treino A</span><span class="dia-emoji" aria-hidden="true">🦍</span></button>
+      <button type="button" class="dia-btn" data-dia="B"><span class="dia-label">Treino B</span><span class="dia-emoji" aria-hidden="true">🦅</span></button>
+      <button type="button" class="dia-btn" data-dia="C"><span class="dia-label">Treino C</span><span class="dia-emoji" aria-hidden="true">🦵</span></button>
+      <button type="button" class="dia-btn" data-dia="D"><span class="dia-label">Treino D</span><span class="dia-emoji" aria-hidden="true">🤷</span></button>
     </div>
 
     <button type="button" class="row-btn" id="btn-historico">
@@ -116,7 +116,7 @@
     <div class="ex-head">
       <h1 class="display ex-nome" id="ex-nome"></h1>
       <div class="serie-counter">
-        <span class="eyebrow">Série</span>
+        <span class="serie-tag">Nova série</span>
         <span class="serie-num" id="serie-num">1</span>
       </div>
     </div>
@@ -215,8 +215,11 @@
       </div>
     </div>
     <div class="field">
-      <label for="novo-nome">Nome</label>
-      <input id="novo-nome" type="text" placeholder="Ex.: Leg press 45°" autocomplete="off" autocapitalize="sentences" enterkeyhint="done" maxlength="60">
+      <label for="novo-nome" id="novo-nome-label">Nome</label>
+      <label class="nome-linha">
+        <input id="novo-nome" type="text" placeholder="Ex.: Leg press 45°" autocomplete="off" autocapitalize="sentences" enterkeyhint="done" maxlength="60">
+        <svg class="nome-lapis" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+      </label>
       <p class="field-erro" id="novo-erro" role="alert" hidden></p>
     </div>
     <div class="field-duo">
@@ -228,10 +231,6 @@
         <label for="padrao-carga">Carga padrão (kg)</label>
         <input id="padrao-carga" type="text" inputmode="decimal" placeholder="—" autocomplete="off" enterkeyhint="done" maxlength="6">
       </div>
-    </div>
-    <div class="field" id="sugestoes-wrap" hidden>
-      <span class="label">Ou toque em um já usado</span>
-      <div class="sugestoes" id="sugestoes"></div>
     </div>
     <div class="sheet-actions">
       <button type="button" class="btn-sec" id="sheet-cancelar">Cancelar</button>

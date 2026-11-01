@@ -416,15 +416,6 @@ function fmtSerie(reps, carga) {
   return carga == null ? `${reps} reps` : `${reps} × ${fmtKg(carga)} kg`;
 }
 
-function fmtVolume(kg) {
-  if (kg >= 1000) return `${(kg / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} t`;
-  return `${fmtKg(Math.round(kg))} kg`;
-}
-
-function volumeDe(series) {
-  return series.reduce((acc, s) => acc + (s.carga_kg == null ? 0 : s.repeticoes * s.carga_kg), 0);
-}
-
 function lerNumero(txt) {
   const n = parseFloat(String(txt).replace(',', '.').replace(/[^\d.]/g, ''));
   return Number.isFinite(n) ? n : null;
@@ -648,8 +639,16 @@ function limparErroNome() {
   $('#novo-erro').hidden = true;
 }
 
+/* Ao editar, o campo do nome ocupa o lugar do título (ver .is-editando no CSS). */
+function modoEdicaoSheet(editando) {
+  $('#sheet-novo').classList.toggle('is-editando', editando);
+  $('#sheet-title').hidden = editando;
+  $('#novo-nome-label').classList.toggle('sr-only', editando);
+}
+
 function abrirSheet() {
   estado.editando = null;
+  modoEdicaoSheet(false);
   $('#sheet-eyebrow').textContent = `Adicionar · ${NOMES_TREINO[estado.dia]}`;
   $('#sheet-title').textContent = 'Novo exercício';
   $('#sheet-salvar').textContent = 'Adicionar';
@@ -660,36 +659,17 @@ function abrirSheet() {
   $('#padrao-carga').value = '';
   limparErroNome();
 
-  // Sugestões: exercícios já usados em outros dias (zero digitação).
-  const doDia = new Set((exerciciosPorDia[estado.dia] || []).map((n) => n.toLowerCase()));
-  const todos = new Set();
-  DIAS.forEach((d) => (exerciciosPorDia[d] || []).forEach((n) => todos.add(n)));
-  cache.forEach((s) => todos.add(s.exercicio));
-  const sugestoes = [...todos].filter((n) => !doDia.has(n.toLowerCase())).sort((a, b) => a.localeCompare(b, 'pt-BR')).slice(0, 12);
-
-  const box = $('#sugestoes');
-  box.innerHTML = '';
-  sugestoes.forEach((n) => {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.textContent = n;
-    b.addEventListener('click', () => adicionarExercicio(n));
-    box.appendChild(b);
-  });
-  $('#sugestoes-wrap').hidden = sugestoes.length === 0;
-
   mostrarSheet();
-  // Sem sugestões, abre direto no teclado; com sugestões, deixa o toque decidir.
-  if (!sugestoes.length) input.focus({ preventScroll: true });
+  input.focus({ preventScroll: true });
 }
 
 function abrirEdicao(nome) {
   estado.editando = nome;
+  modoEdicaoSheet(true);
   $('#sheet-eyebrow').textContent = `Editar · ${NOMES_TREINO[estado.dia]}`;
   $('#sheet-title').textContent = 'Editar exercício';
   $('#sheet-salvar').textContent = 'Salvar';
   $('#sheet-remover').hidden = false;
-  $('#sugestoes-wrap').hidden = true;
   $('#novo-nome').value = nome;
   const padrao = padraoDe(nome);
   $('#padrao-reps').value = padrao.reps ?? '';
@@ -1112,7 +1092,6 @@ function renderResumoHistorico(filtradas) {
   const stats = [
     [treinos, treinos === 1 ? 'treino' : 'treinos'],
     [filtradas.length, filtradas.length === 1 ? 'série' : 'séries'],
-    [fmtVolume(volumeDe(filtradas)), 'volume'],
   ];
   const tiles = document.createElement('div');
   tiles.className = 'hist-stats';
@@ -1221,8 +1200,6 @@ function renderHistorico() {
     porDia.forEach((porEx, dia) => {
       const doTreino = [...porEx.values()].flat();
       const meta = [`${doTreino.length} ${doTreino.length === 1 ? 'série' : 'séries'}`];
-      const volume = volumeDe(doTreino);
-      if (volume > 0) meta.push(fmtVolume(volume));
       if (estado.filtroEx === 'todos') {
         const duracao = fmtDuracao(doTreino);
         if (duracao) meta.push(duracao);
