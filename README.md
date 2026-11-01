@@ -1,6 +1,6 @@
 # FastRep — registro rápido de treino (PWA)
 
-Arquivos: `index.html`, `style.css`, `app.js`, `manifest.json`, `sw.js`, `icons/`, `vendor/` (SDK do Supabase 2.45.4, embutido para funcionar offline), `fonts/` (Barlow, licença OFL, embutida para funcionar offline).
+Arquivos: `index.html`, `style.css`, `app.js`, `manifest.json`, `sw.js`, `icons/`, `vendor/` (SDK do Supabase 2.45.4, embutido para funcionar offline), `fonts/` (Barlow Condensed, licença OFL, embutida para funcionar offline).
 
 ## Rodar
 Precisa ser servido por HTTP(S) (service worker não funciona abrindo o arquivo direto):

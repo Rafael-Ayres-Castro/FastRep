@@ -529,10 +529,6 @@ function renderInicio() {
     const eUltimo = dia === ultimoDia;
     btn.classList.toggle('is-last', eUltimo);
     btn.setAttribute('aria-label', `${NOMES_TREINO[dia]}${eUltimo ? ', último escolhido' : ''}`);
-    const top = btn.querySelector('.dia-top');
-    const badge = top.querySelector('.badge-ultimo');
-    if (eUltimo && !badge) top.insertAdjacentHTML('beforeend', '<span class="badge-ultimo">ÚLTIMO</span>');
-    if (!eUltimo && badge) badge.remove();
   });
 
   const info = $('#ultimo-info');
@@ -574,7 +570,7 @@ function resumoExercicio(nome) {
 function renderTreino() {
   const dia = estado.dia;
   $('#treino-dia').textContent = NOMES_TREINO[dia];
-  $('#treino-data').textContent = dataCurta(new Date()).toUpperCase();
+  $('#treino-data').textContent = capitalizar(dataCurta(new Date()));
 
   const totalHoje = cache.filter((s) => s.dia_treino === dia && chaveData(s.criado_em) === hojeChave()).length;
   $('#treino-resumo').textContent = totalHoje ? `${totalHoje} ${totalHoje === 1 ? 'série' : 'séries'} hoje` : '';
@@ -618,14 +614,13 @@ function renderTreino() {
 
 function ligarLongPress(el, acao) {
   let timer = null;
-  const cancelar = () => { clearTimeout(timer); el.classList.remove('is-holding'); };
+  const cancelar = () => clearTimeout(timer);
   el.addEventListener('pointerdown', () => {
     delete el.dataset.longpress;
     timer = setTimeout(() => {
       el.dataset.longpress = '1';
-      el.classList.add('is-holding');
       vibrar(25);
-      setTimeout(() => { acao(); el.classList.remove('is-holding'); }, 30);
+      acao();
     }, 600);
   });
   ['pointerup', 'pointerleave', 'pointercancel'].forEach((ev) => el.addEventListener(ev, cancelar));
@@ -655,7 +650,7 @@ function limparErroNome() {
 
 function abrirSheet() {
   estado.editando = null;
-  $('#sheet-eyebrow').textContent = `ADICIONAR · ${NOMES_TREINO[estado.dia].toUpperCase()}`;
+  $('#sheet-eyebrow').textContent = `Adicionar · ${NOMES_TREINO[estado.dia]}`;
   $('#sheet-title').textContent = 'Novo exercício';
   $('#sheet-salvar').textContent = 'Adicionar';
   $('#sheet-remover').hidden = true;
@@ -683,16 +678,14 @@ function abrirSheet() {
   });
   $('#sugestoes-wrap').hidden = sugestoes.length === 0;
 
-  $('#sheet-backdrop').hidden = false;
-  $('#sheet-novo').hidden = false;
-  ajustarSheetAoTeclado();
+  mostrarSheet();
   // Sem sugestões, abre direto no teclado; com sugestões, deixa o toque decidir.
-  if (!sugestoes.length) input.focus();
+  if (!sugestoes.length) input.focus({ preventScroll: true });
 }
 
 function abrirEdicao(nome) {
   estado.editando = nome;
-  $('#sheet-eyebrow').textContent = `EDITAR · ${NOMES_TREINO[estado.dia].toUpperCase()}`;
+  $('#sheet-eyebrow').textContent = `Editar · ${NOMES_TREINO[estado.dia]}`;
   $('#sheet-title').textContent = 'Editar exercício';
   $('#sheet-salvar').textContent = 'Salvar';
   $('#sheet-remover').hidden = false;
@@ -702,9 +695,7 @@ function abrirEdicao(nome) {
   $('#padrao-reps').value = padrao.reps ?? '';
   $('#padrao-carga').value = padrao.carga == null ? '' : fmtKg(padrao.carga);
   limparErroNome();
-  $('#sheet-backdrop').hidden = false;
-  $('#sheet-novo').hidden = false;
-  ajustarSheetAoTeclado();
+  mostrarSheet();
 }
 
 /* O nome é a identidade do exercício: renomeia em todos os dias, no cache e no servidor. */
@@ -746,12 +737,87 @@ function salvarEdicao(nomeBruto) {
   processarFila();
 }
 
+let timerSheet = null;
+
+function mostrarSheet() {
+  const sheet = $('#sheet-novo');
+  const fundo = $('#sheet-backdrop');
+  clearTimeout(timerSheet);
+  fundo.hidden = false;
+  sheet.hidden = false;
+  void sheet.offsetHeight;   // aplica a posição inicial para a transição acontecer
+  sheet.classList.add('is-open');
+  fundo.classList.add('is-open');
+  document.body.classList.add('sheet-aberto');
+  document.querySelectorAll('.view').forEach((v) => { v.inert = true; });
+  ajustarSheetAoTeclado();
+}
+
 function fecharSheet() {
+  const sheet = $('#sheet-novo');
+  const fundo = $('#sheet-backdrop');
   estado.editando = null;
   $('#novo-nome').blur();
-  $('#sheet-backdrop').hidden = true;
-  $('#sheet-novo').hidden = true;
-  $('#sheet-novo').style.bottom = '';
+  sheet.classList.remove('is-open');
+  fundo.classList.remove('is-open');
+  sheet.style.transform = '';
+  fundo.style.opacity = '';
+  document.body.classList.remove('sheet-aberto');
+  document.querySelectorAll('.view').forEach((v) => { v.inert = false; });
+  clearTimeout(timerSheet);
+  timerSheet = setTimeout(() => {
+    fundo.hidden = true;
+    sheet.hidden = true;
+    sheet.style.bottom = '';
+  }, 280);
+}
+
+/* Arrastar a alça ou o título para baixo fecha o sheet: basta passar de 30% da altura ou
+   dar um movimento rápido. Para cima, resiste cada vez mais em vez de parar de repente. */
+function ligarArrasteSheet() {
+  const grab = $('#sheet-grab');
+  const sheet = $('#sheet-novo');
+  const fundo = $('#sheet-backdrop');
+  let arraste = null;
+
+  grab.addEventListener('pointerdown', (e) => {
+    if (arraste) return;   // um segundo dedo não rouba o arraste
+    // Parte de onde o sheet está na tela, mesmo que ainda esteja animando.
+    const base = new DOMMatrix(getComputedStyle(sheet).transform).m42;
+    arraste = { id: e.pointerId, inicio: e.clientY, base, y: base, amostraY: base, amostraT: e.timeStamp, veloc: 0 };
+    grab.setPointerCapture(e.pointerId);
+    sheet.classList.add('is-dragging');
+    sheet.style.transform = `translate3d(0, ${base}px, 0)`;
+  });
+
+  grab.addEventListener('pointermove', (e) => {
+    if (!arraste || e.pointerId !== arraste.id) return;
+    const bruto = arraste.base + e.clientY - arraste.inicio;
+    arraste.y = bruto >= 0 ? bruto : -(Math.abs(bruto) * 200) / (200 + Math.abs(bruto));
+    if (e.timeStamp - arraste.amostraT > 60) {
+      arraste.veloc = (arraste.y - arraste.amostraY) / (e.timeStamp - arraste.amostraT);
+      arraste.amostraY = arraste.y;
+      arraste.amostraT = e.timeStamp;
+    }
+    sheet.style.transform = `translate3d(0, ${arraste.y}px, 0)`;
+    fundo.style.opacity = String(1 - Math.max(0, arraste.y) / sheet.offsetHeight);
+  });
+
+  const soltar = (e, cancelado) => {
+    if (!arraste || e.pointerId !== arraste.id) return;
+    const { y, veloc } = arraste;
+    arraste = null;
+    sheet.classList.remove('is-dragging');
+    if (!cancelado && (y > sheet.offsetHeight * 0.3 || (y > 12 && veloc > 0.3))) {
+      vibrar(8);
+      fecharSheet();
+    } else {
+      sheet.style.transform = '';
+      fundo.style.opacity = '';
+    }
+  };
+  grab.addEventListener('pointerup', (e) => soltar(e, false));
+  grab.addEventListener('pointercancel', (e) => soltar(e, true));
 }
 
 function adicionarExercicio(nomeBruto) {
@@ -792,7 +858,6 @@ function ajustarSheetAoTeclado() {
 
 let travaRegistro = false;
 let timerFeedback = null;
-let timerToast = null;
 
 function abrirExercicio(nome) {
   estado.exercicio = nome;
@@ -838,6 +903,8 @@ function renderControles() {
     input.value = estado.semCarga || estado.carga == null ? '' : fmtKg(estado.carga);
   }
   input.placeholder = estado.semCarga ? '—' : '0';
+  // O campo acompanha o número para "65 kg" ficar centralizado no conjunto.
+  input.style.width = `${Math.max(input.value.length, 1) + 0.4}ch`;
   $('#carga-row').classList.toggle('is-off', estado.semCarga);
   $('#btn-sem-carga').setAttribute('aria-pressed', String(estado.semCarga));
 
@@ -911,27 +978,31 @@ function registrarSerie() {
   processarFila();
 }
 
+/* O texto do botão troca com um leve desfoque: lê como uma só peça mudando de estado. */
+function suavizarTextoCta() {
+  ['#cta-main', '#cta-sub'].forEach((sel) => {
+    $(sel).animate(
+      [{ opacity: 0, filter: 'blur(4px)' }, { opacity: 1, filter: 'blur(0)' }],
+      { duration: 200, easing: 'ease' }
+    );
+  });
+}
+
 function feedbackRegistro(serie) {
   const cta = $('#btn-registrar');
   cta.classList.add('is-done');
   $('#cta-main').innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
   $('#cta-main').append(` Série ${serie.numero_serie} registrada`);
   $('#cta-sub').textContent = '';
+  suavizarTextoCta();
   clearTimeout(timerFeedback);
-  timerFeedback = setTimeout(() => { cta.classList.remove('is-done'); renderControles(); }, 900);
+  timerFeedback = setTimeout(() => { cta.classList.remove('is-done'); renderControles(); suavizarTextoCta(); }, 900);
 
   const num = $('#serie-num');
   num.classList.remove('bump'); void num.offsetWidth; num.classList.add('bump');
 
-  mostrarToast(`Série ${serie.numero_serie} · ${fmtSerie(serie.repeticoes, serie.carga_kg)}`);
-}
-
-function mostrarToast(txt) {
-  const t = $('#toast');
-  $('#toast-txt').textContent = txt;
-  t.hidden = true; void t.offsetWidth; t.hidden = false;
-  clearTimeout(timerToast);
-  timerToast = setTimeout(() => { t.hidden = true; }, 1500);
+  // Quem usa leitor de tela ouve a confirmação que os outros veem no botão.
+  $('#anuncio').textContent = `Série ${serie.numero_serie} registrada: ${fmtSerie(serie.repeticoes, serie.carga_kg)}`;
 }
 
 function desfazerUltima() {
@@ -956,7 +1027,6 @@ function desfazerUltima() {
   };
 
   vibrar(10);
-  $('#toast').hidden = true;
   if (chip) { chip.classList.add('is-leaving'); setTimeout(aplicar, 170); }
   else aplicar();
 }
@@ -1226,14 +1296,79 @@ function ligarHistorico() {
    5. NAVEGAÇÃO, EVENTOS GLOBAIS E SERVICE WORKER
    ===================================================================== */
 
-function mostrar(tela) {
+const PROFUNDIDADE = { inicio: 0, historico: 1, treino: 1, exercicio: 2 };
+const rolagens = {};   // posição de cada tela, para voltar ao mesmo ponto da lista
+
+function listaRolavel(view) { return view.querySelector('.scroll-list, .hist-scroll'); }
+
+function mostrar(tela, { animar = true } = {}) {
+  const views = [...document.querySelectorAll('.view')];
+  const saindo = views.find((v) => v.dataset.view === estado.tela);
+  const entrando = views.find((v) => v.dataset.view === tela);
+  const voltando = PROFUNDIDADE[tela] < PROFUNDIDADE[estado.tela];
+
+  const listaSaindo = listaRolavel(saindo);
+  rolagens[estado.tela] = { view: saindo.scrollTop, lista: listaSaindo ? listaSaindo.scrollTop : 0 };
+
+  // Uma troca no meio de outra continua da posição em que as telas estão agora.
+  const posicoes = new Map();
+  views.forEach((v) => {
+    const animacoes = v.getAnimations();
+    if (animacoes.length) {
+      const cs = getComputedStyle(v);
+      posicoes.set(v, { transform: cs.transform, opacity: cs.opacity });
+    }
+    animacoes.forEach((a) => a.cancel());
+    v.classList.remove('is-leaving', 'is-topo');
+    v.inert = false;
+    v.hidden = v !== entrando && v !== saindo;
+  });
+
   estado.tela = tela;
-  document.querySelectorAll('.view').forEach((v) => { v.hidden = v.dataset.view !== tela; v.scrollTop = 0; });
+  entrando.hidden = false;
   if (tela === 'inicio') renderInicio();
   if (tela === 'treino') renderTreino();
   if (tela === 'exercicio') renderExercicio();
   if (tela === 'historico') renderHistorico();
   atualizarSync();
+
+  const lista = listaRolavel(entrando);
+  const salvo = voltando ? rolagens[tela] : null;
+  entrando.scrollTop = salvo ? salvo.view : 0;
+  if (lista) lista.scrollTop = salvo ? salvo.lista : 0;
+
+  if (saindo === entrando) return;
+  if (animar) animarTroca(saindo, entrando, voltando, posicoes);
+  else saindo.hidden = true;
+}
+
+/* Como no iOS: avançar entra pela direita e voltar sai por onde entrou. A tela nova já
+   responde ao toque durante a animação. */
+function animarTroca(saindo, entrando, voltando, posicoes) {
+  const opcoes = { duration: 300, easing: 'cubic-bezier(0.32, 0.72, 0, 1)' };
+  const atras = { transform: 'translateX(-25%)', opacity: 0.5 };
+  const fora = { transform: 'translateX(100%)', opacity: 1 };
+  const parado = { transform: 'none', opacity: 1 };
+
+  saindo.classList.add('is-leaving');
+  saindo.classList.toggle('is-topo', voltando);
+  saindo.inert = true;
+
+  const reduzido = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduzido) {
+    opcoes.duration = 180;
+    opcoes.easing = 'ease';
+    entrando.animate([{ opacity: 0 }, { opacity: 1 }], opcoes);
+  } else {
+    entrando.animate([posicoes.get(entrando) || (voltando ? atras : fora), parado], opcoes);
+  }
+  const fim = reduzido ? { opacity: 0 } : (voltando ? fora : atras);
+  const inicio = reduzido ? { opacity: 1 } : (posicoes.get(saindo) || parado);
+  saindo.animate([inicio, fim], opcoes).finished.then(() => {
+    saindo.hidden = true;
+    saindo.classList.remove('is-leaving', 'is-topo');
+    saindo.inert = false;
+  }).catch(() => { /* interrompida por outra troca de tela */ });
 }
 
 function irPara(tela) {
@@ -1247,10 +1382,12 @@ window.addEventListener('popstate', (e) => {
   if (s.dia) estado.dia = s.dia;
   if (s.exercicio) estado.exercicio = s.exercicio;
   // Telas que dependem de um dia/exercício caem para o início se faltar contexto
+  // Se o próprio navegador já animou o gesto de voltar, não anima de novo.
+  const animar = !e.hasUAVisualTransition;
   if ((s.tela === 'treino' && !estado.dia) || (s.tela === 'exercicio' && !estado.exercicio)) {
-    mostrar('inicio');
+    mostrar('inicio', { animar });
   } else {
-    mostrar(s.tela);
+    mostrar(s.tela, { animar });
   }
 });
 
@@ -1260,6 +1397,9 @@ function voltar() {
 }
 
 function iniciar() {
+  // Sem um listener de toque, o Safari do iPhone não aplica :active e os botões não reagem à pressão.
+  document.addEventListener('touchstart', () => {}, { passive: true });
+
   // Navegação
   document.querySelectorAll('.dia-btn').forEach((b) => b.addEventListener('click', () => escolherDia(b.dataset.dia)));
   document.querySelectorAll('[data-back]').forEach((b) => b.addEventListener('click', voltar));
@@ -1277,6 +1417,7 @@ function iniciar() {
     else adicionarExercicio(nome);
   });
   $('#novo-nome').addEventListener('input', limparErroNome);
+  ligarArrasteSheet();
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#sheet-novo').hidden) fecharSheet(); });
   if (window.visualViewport) {
     visualViewport.addEventListener('resize', ajustarSheetAoTeclado);
