@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>FastRep</title>
   <meta name="description" content="Registro rápido de séries na academia">
-  <meta name="theme-color" content="#000000">
+  <meta name="theme-color" content="#181818">
   <meta name="color-scheme" content="dark">
 
   <!-- PWA / iOS -->
@@ -30,70 +30,67 @@
   <link rel="apple-touch-startup-image" media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="icons/splash/splash-1290x2796.png">
   <link rel="apple-touch-startup-image" media="(device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="icons/splash/splash-1320x2868.png">
 
-  <link rel="preload" href="fonts/barlow-condensed-latin-800-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="fonts/space-grotesk-latin-500-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
   <!-- ============ TELA 1: ESCOLHA DO DIA ============ -->
-  <main id="view-inicio" class="view" data-view="inicio">
-    <header class="topbar">
+  <main id="view-inicio" class="view view-aba" data-view="inicio">
+    <header class="home-head">
       <div class="brand">
         <span class="brand-mark" aria-hidden="true">
           <svg viewBox="0 0 24 24"><path d="M6 7v10M18 7v10M3 10v4M21 10v4M6 12h12"/></svg>
         </span>
-        <span class="brand-name">FASTREP</span>
+        <span class="brand-txt">
+          <span class="brand-name">FastRep</span>
+          <span class="eyebrow-date" id="hoje-label"></span>
+        </span>
       </div>
       <div class="sync" role="status" aria-live="polite"></div>
     </header>
 
+    <section class="grafico" id="semana-grafico"></section>
+
     <div class="hero">
-      <span class="eyebrow-date" id="hoje-label"></span>
-      <h1 class="display">Qual treino<br>é hoje?</h1>
+      <h1 class="display">Qual treino é hoje?</h1>
+      <p class="ultimo-info" id="ultimo-info"></p>
     </div>
-
-    <div class="spacer"></div>
-
-    <p class="ultimo-info" id="ultimo-info"></p>
 
     <div class="dias-grid" id="dias-grid">
-      <button type="button" class="dia-btn" data-dia="A"><span class="dia-label">Treino A</span><span class="dia-emoji" aria-hidden="true">🦍</span></button>
-      <button type="button" class="dia-btn" data-dia="B"><span class="dia-label">Treino B</span><span class="dia-emoji" aria-hidden="true">🦅</span></button>
-      <button type="button" class="dia-btn" data-dia="C"><span class="dia-label">Treino C</span><span class="dia-emoji" aria-hidden="true">🦵</span></button>
-      <button type="button" class="dia-btn" data-dia="D"><span class="dia-label">Treino D</span><span class="dia-emoji" aria-hidden="true">🤷</span></button>
+      <button type="button" class="dia-btn" data-dia="A"><span class="dia-label">Treino A</span><span class="dia-base"><span class="dia-ultimo">Último</span><span class="dia-emoji" aria-hidden="true">🦍</span></span></button>
+      <button type="button" class="dia-btn" data-dia="B"><span class="dia-label">Treino B</span><span class="dia-base"><span class="dia-ultimo">Último</span><span class="dia-emoji" aria-hidden="true">🦅</span></span></button>
+      <button type="button" class="dia-btn" data-dia="C"><span class="dia-label">Treino C</span><span class="dia-base"><span class="dia-ultimo">Último</span><span class="dia-emoji" aria-hidden="true">🦵</span></span></button>
+      <button type="button" class="dia-btn" data-dia="D"><span class="dia-label">Treino D</span><span class="dia-base"><span class="dia-ultimo">Último</span><span class="dia-emoji" aria-hidden="true">🤷</span></span></button>
     </div>
-
-    <button type="button" class="row-btn" id="btn-historico">
-      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg>
-      <span class="grow">Histórico</span>
-      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
-    </button>
   </main>
 
   <!-- ============ TELA 2: EXERCÍCIOS DO DIA ============ -->
   <main id="view-treino" class="view" data-view="treino" hidden>
     <header class="topbar">
-      <button type="button" class="pill-back" data-back>
+      <button type="button" class="pill-back" data-back aria-label="Voltar">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
-        <span>Início</span>
       </button>
+      <h1 class="topbar-title" id="treino-dia"></h1>
       <div class="sync" role="status" aria-live="polite"></div>
     </header>
 
-    <div class="title-row">
+    <div class="treino-head">
+      <span class="treino-emoji" id="treino-emoji" aria-hidden="true"></span>
       <div class="title-stack">
-        <span class="eyebrow" id="treino-data"></span>
-        <h1 class="display accent" id="treino-dia"></h1>
+        <strong id="treino-data"></strong>
+        <span class="muted" id="treino-resumo"></span>
       </div>
-      <span class="muted" id="treino-resumo"></span>
     </div>
 
-    <div class="spacer"></div>
+    <div id="treino-semana"></div>
 
     <div class="scroll-list">
       <ul class="ex-list" id="ex-list"></ul>
       <p class="empty" id="ex-empty" hidden>Nenhum exercício neste dia ainda.<br>Toque em <strong>Novo exercício</strong> para começar.</p>
     </div>
+
+    <div class="spacer"></div>
 
     <p class="hint" id="ex-hint">Segure um exercício para editar ou remover.</p>
 
@@ -106,19 +103,22 @@
   <!-- ============ TELA 3: REGISTRAR SÉRIE ============ -->
   <main id="view-exercicio" class="view" data-view="exercicio" hidden>
     <header class="topbar">
-      <button type="button" class="pill-back" data-back>
+      <button type="button" class="pill-back" data-back aria-label="Voltar">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
-        <span id="ex-back-label">Treino</span>
       </button>
+      <p class="topbar-title" id="ex-back-label">Treino</p>
       <div class="sync" role="status" aria-live="polite"></div>
     </header>
 
     <div class="ex-head">
-      <h1 class="display ex-nome" id="ex-nome"></h1>
-      <div class="serie-counter">
-        <span class="serie-tag">Nova série</span>
-        <span class="serie-num" id="serie-num">1</span>
+      <div class="anel-wrap">
+        <svg class="anel" id="serie-anel" viewBox="0 0 120 120" aria-hidden="true"></svg>
+        <div class="serie-counter">
+          <span class="serie-tag">Nova série</span>
+          <span class="serie-num" id="serie-num">1</span>
+        </div>
       </div>
+      <h1 class="display ex-nome" id="ex-nome"></h1>
     </div>
 
     <section class="feitas">
@@ -173,19 +173,12 @@
   <!-- ============ TELA 4: HISTÓRICO ============ -->
   <main id="view-historico" class="view view-historico" data-view="historico" hidden>
     <header class="topbar">
-      <button type="button" class="pill-back" data-back>
+      <button type="button" class="pill-back" data-back aria-label="Voltar">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
-        <span>Início</span>
       </button>
+      <h1 class="topbar-title">Histórico</h1>
       <div class="sync" role="status" aria-live="polite"></div>
     </header>
-
-    <div class="hist-scroll" id="hist-scroll">
-      <h1 class="display hist-titulo">Histórico</h1>
-      <div id="hist-resumo"></div>
-      <div id="hist-list"></div>
-      <p class="empty" id="hist-vazio" hidden></p>
-    </div>
 
     <div class="filter-bar">
       <label class="select-wrap">
@@ -202,7 +195,25 @@
         <button type="button" data-f="D">Ombro</button>
       </div>
     </div>
+
+    <div class="hist-scroll" id="hist-scroll">
+      <div id="hist-resumo"></div>
+      <div id="hist-list"></div>
+      <p class="empty" id="hist-vazio" hidden></p>
+    </div>
   </main>
+
+  <!-- ============ ABAS ============ -->
+  <nav class="tabbar" id="tabbar" aria-label="Navegação principal">
+    <button type="button" class="tab" data-aba="inicio">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/></svg>
+      <span>Início</span>
+    </button>
+    <button type="button" class="tab" data-aba="historico">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg>
+      <span>Histórico</span>
+    </button>
+  </nav>
 
   <!-- ============ SHEET: NOVO / EDITAR EXERCÍCIO ============ -->
   <div class="sheet-backdrop" id="sheet-backdrop" hidden></div>

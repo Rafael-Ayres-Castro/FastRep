@@ -1,6 +1,6 @@
 /* Service worker básico: guarda o app no aparelho para abrir offline.
    Ao alterar qualquer arquivo do app, aumente a VERSAO para forçar atualização. */
-const VERSAO = 'fastrep-v12';
+const VERSAO = 'fastrep-v13';
 
 const ARQUIVOS = [
   './',
@@ -14,8 +14,9 @@ const ARQUIVOS = [
   './icons/icon-512.png',
   './icons/icon-maskable-512.png',
   './icons/apple-touch-icon.png',
-  './fonts/barlow-condensed-latin-700-normal.woff2',
-  './fonts/barlow-condensed-latin-800-normal.woff2',
+  './fonts/space-grotesk-latin-400-normal.woff2',
+  './fonts/space-grotesk-latin-500-normal.woff2',
+  './fonts/space-grotesk-latin-700-normal.woff2',
 ];
 
 self.addEventListener('install', (event) => {

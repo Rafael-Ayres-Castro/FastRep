@@ -324,11 +324,11 @@ function atualizarSync() {
 
   if (!navigator.onLine && n > 0) {
     classe = 'is-offline';
-    texto = `Sem conexão · ${n} p/ enviar`;
+    texto = `Offline · ${n}`;
     aria = `Sem conexão. ${n} ${n === 1 ? 'série será enviada' : 'séries serão enviadas'} depois.`;
   } else if (!navigator.onLine) {
     classe = 'is-offline';
-    texto = 'Sem conexão';
+    texto = 'Offline';
     aria = 'Sem conexão. Novos registros serão enviados depois.';
   } else if (sincronizando) {
     classe = 'is-sending';
@@ -336,7 +336,7 @@ function atualizarSync() {
     aria = 'Enviando registros';
   } else if (erroSync && n > 0) {
     classe = 'is-error';
-    texto = 'Erro · tentando de novo';
+    texto = 'Erro ao enviar';
     aria = 'Erro ao enviar. Tentando de novo em instantes.';
   }
 
@@ -355,6 +355,7 @@ function atualizarSync() {
 
 const DIAS = ['A', 'B', 'C', 'D'];
 const NOMES_TREINO = { A: 'Peito Day', B: 'Costas Day', C: 'Leg Day', D: 'Ombro Day' };
+const EMOJIS_TREINO = { A: '🦍', B: '🦅', C: '🦵', D: '🤷' };
 const REPS_PADRAO = 12;
 
 const estado = {
@@ -471,6 +472,34 @@ function ultimaSerieDe(exercicio) {
   return null;
 }
 
+/* Faixa da semana, de segunda a domingo: cada dia treinado ganha a cor do treino
+   (amarelo quando houve mais de um treino no dia). */
+function criarFaixaSemana(series) {
+  const semana = document.createElement('div');
+  semana.className = 'hist-semana';
+  semana.setAttribute('role', 'img');
+  const rotulosAria = [];
+  const hojeNaSemana = (new Date().getDay() + 6) % 7;   // segunda = 0 ... domingo = 6
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(); d.setDate(d.getDate() - hojeNaSemana + i);
+    const k = chaveData(d);
+    const dias = [...new Set(series.filter((s) => chaveData(s.criado_em) === k).map((s) => s.dia_treino))].sort();
+    if (dias.length) rotulosAria.push(`${dataCurta(d)}: ${dias.map((x) => NOMES_TREINO[x]).join(' e ')}`);
+    const c = document.createElement('div');
+    c.className = 'hist-semana-dia' + (i === hojeNaSemana ? ' is-hoje' : '');
+    c.innerHTML = '<b></b><span></span>';
+    c.firstChild.textContent = d.getDate();
+    c.firstChild.classList.toggle('is-on', dias.length > 0);
+    if (dias.length === 1) c.firstChild.dataset.dia = dias[0];
+    c.lastChild.textContent = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'][i];
+    semana.appendChild(c);
+  }
+  semana.setAttribute('aria-label', rotulosAria.length
+    ? `Esta semana. ${rotulosAria.join('. ')}.`
+    : 'Nenhum treino nesta semana.');
+  return semana;
+}
+
 function gravarExercicios() { store.gravar(CHAVES.exercicios, exerciciosPorDia); }
 
 function padraoDe(nome) {
@@ -532,6 +561,62 @@ function renderInicio() {
   } else {
     info.textContent = 'Toque no treino de hoje para começar.';
   }
+
+  renderGraficoSemana();
+}
+
+/* Séries por dia nos últimos 7 dias: laranja nos dias de pico, balão com o total de hoje. */
+function renderGraficoSemana() {
+  const dias = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(); d.setDate(d.getDate() - i);
+    const k = chaveData(d);
+    dias.push({ d, n: cache.filter((s) => chaveData(s.criado_em) === k).length, hoje: i === 0 });
+  }
+  const max = Math.max(...dias.map((x) => x.n));
+  const passo = max <= 8 ? 2 : max <= 20 ? 5 : max <= 40 ? 10 : 20;
+  const topo = Math.max(4, Math.ceil(max / passo) * passo);
+
+  const box = $('#semana-grafico');
+  box.innerHTML = `
+    <h2 class="grafico-titulo">Séries por dia</h2>
+    <div class="grafico-plot"></div>
+    <div class="grafico-dias" aria-hidden="true"></div>`;
+  const plot = box.querySelector('.grafico-plot');
+  const rotulos = box.querySelector('.grafico-dias');
+  plot.setAttribute('role', 'img');
+  const comSeries = dias.filter((x) => x.n > 0).map((x) => `${dataCurta(x.d)}: ${x.n}`);
+  plot.setAttribute('aria-label', comSeries.length
+    ? `Séries nos últimos 7 dias. ${comSeries.join('. ')}.`
+    : 'Nenhuma série nos últimos 7 dias.');
+
+  for (let v = 0; v <= topo; v += passo) {
+    const linha = document.createElement('span');
+    linha.className = 'grafico-linha';
+    linha.style.bottom = `${(v / topo) * 100}%`;
+    linha.textContent = v;
+    plot.appendChild(linha);
+  }
+  dias.forEach(({ d, n, hoje }) => {
+    const col = document.createElement('div');
+    col.className = 'grafico-col';
+    const barra = document.createElement('div');
+    barra.className = 'grafico-barra' + (n > 0 && n === max ? ' is-pico' : '') + (n === 0 ? ' is-vazia' : '');
+    barra.style.height = n ? `${(n / topo) * 100}%` : '';
+    if (hoje && n > 0) {
+      const dica = document.createElement('span');
+      dica.className = 'grafico-dica';
+      dica.textContent = n;
+      barra.appendChild(dica);
+    }
+    col.appendChild(barra);
+    plot.appendChild(col);
+
+    const r = document.createElement('span');
+    r.textContent = capitalizar(d.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', ''));
+    r.classList.toggle('is-hoje', hoje);
+    rotulos.appendChild(r);
+  });
 }
 
 function escolherDia(dia) {
@@ -564,7 +649,10 @@ function renderTreino() {
   $('#treino-data').textContent = capitalizar(dataCurta(new Date()));
 
   const totalHoje = cache.filter((s) => s.dia_treino === dia && chaveData(s.criado_em) === hojeChave()).length;
-  $('#treino-resumo').textContent = totalHoje ? `${totalHoje} ${totalHoje === 1 ? 'série' : 'séries'} hoje` : '';
+  $('#treino-resumo').textContent = totalHoje ? `${totalHoje} ${totalHoje === 1 ? 'série' : 'séries'} hoje` : 'Nenhuma série hoje';
+  $('#treino-emoji').textContent = EMOJIS_TREINO[dia];
+  $('#treino-emoji').dataset.dia = dia;
+  $('#treino-semana').replaceChildren(criarFaixaSemana(cache.filter((s) => s.dia_treino === dia)));
 
   const lista = $('#ex-list');
   lista.innerHTML = '';
@@ -730,6 +818,7 @@ function mostrarSheet() {
   fundo.classList.add('is-open');
   document.body.classList.add('sheet-aberto');
   document.querySelectorAll('.view').forEach((v) => { v.inert = true; });
+  $('#tabbar').inert = true;
   ajustarSheetAoTeclado();
 }
 
@@ -744,6 +833,7 @@ function fecharSheet() {
   fundo.style.opacity = '';
   document.body.classList.remove('sheet-aberto');
   document.querySelectorAll('.view').forEach((v) => { v.inert = false; });
+  $('#tabbar').inert = !ABAS.has(estado.tela);
   clearTimeout(timerSheet);
   timerSheet = setTimeout(() => {
     fundo.hidden = true;
@@ -901,12 +991,25 @@ function cargaAtual() {
   return estado.semCarga ? null : estado.carga;
 }
 
+/* Anel em segmentos: azul = feitas, amarelo = a série atual, escuro = as próximas. */
+function renderAnel(feitas) {
+  const total = Math.max(4, feitas + 1);
+  const vao = 4;   // espaço entre segmentos, em % da volta
+  const anel = $('#serie-anel');
+  anel.innerHTML = Array.from({ length: total }, (_, i) => {
+    const tam = 100 / total - vao;
+    const classe = i < feitas ? 'is-feita' : i === feitas ? 'is-atual' : '';
+    return `<circle class="${classe}" cx="60" cy="60" r="55" pathLength="100" stroke-dasharray="${tam} ${100 - tam}" stroke-dashoffset="${-(i * 100 / total + vao / 2)}"/>`;
+  }).join('');
+}
+
 function renderExercicio({ animarNova = false } = {}) {
   $('#ex-nome').textContent = estado.exercicio;
   $('#ex-back-label').textContent = NOMES_TREINO[estado.dia];
 
   const feitas = seriesHoje(estado.dia, estado.exercicio);
   $('#serie-num').textContent = feitas.length + 1;
+  renderAnel(feitas.length);
 
   const pend = idsPendentes();
   const chips = $('#feitas-chips');
@@ -1090,44 +1193,22 @@ function renderResumoHistorico(filtradas) {
 
   const treinos = new Set(filtradas.map((s) => `${chaveData(s.criado_em)}|${s.dia_treino}`)).size;
   const stats = [
-    [treinos, treinos === 1 ? 'treino' : 'treinos'],
-    [filtradas.length, filtradas.length === 1 ? 'série' : 'séries'],
+    ['Treinos', treinos, 'A', '<path d="M12 3c1 3 5 5 5 10a5 5 0 0 1-10 0c0-2 1-3 2-4 0 2 1 3 2 3 1-3 0-6 1-9Z"/>'],
+    ['Séries', filtradas.length, 'D', '<path d="M6 7v10M18 7v10M3 10v4M21 10v4M6 12h12"/>'],
   ];
   const tiles = document.createElement('div');
   tiles.className = 'hist-stats';
-  stats.forEach(([valor, rotulo]) => {
+  stats.forEach(([rotulo, valor, cor, icone]) => {
     const t = document.createElement('div');
     t.className = 'hist-stat';
-    t.innerHTML = '<strong></strong><span></span>';
-    t.firstChild.textContent = valor;
-    t.lastChild.textContent = rotulo;
+    t.dataset.dia = cor;
+    t.innerHTML = `<span></span><svg viewBox="0 0 24 24" aria-hidden="true">${icone}</svg><strong></strong>`;
+    t.querySelector('span').textContent = rotulo;
+    t.querySelector('strong').textContent = valor;
     tiles.appendChild(t);
   });
   box.appendChild(tiles);
-
-  // Semana atual, de segunda a domingo: em quais dias houve treino
-  const semana = document.createElement('div');
-  semana.className = 'hist-semana';
-  semana.setAttribute('role', 'img');
-  const rotulosAria = [];
-  const hojeNaSemana = (new Date().getDay() + 6) % 7;   // segunda = 0 ... domingo = 6
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(); d.setDate(d.getDate() - hojeNaSemana + i);
-    const k = chaveData(d);
-    const dias = [...new Set(filtradas.filter((s) => chaveData(s.criado_em) === k).map((s) => s.dia_treino))].sort();
-    if (dias.length) rotulosAria.push(`${dataCurta(d)}: ${dias.map((x) => NOMES_TREINO[x]).join(' e ')}`);
-    const c = document.createElement('div');
-    c.className = 'hist-semana-dia' + (i === hojeNaSemana ? ' is-hoje' : '');
-    c.innerHTML = '<span></span><b></b>';
-    c.firstChild.textContent = 'STQQSSD'[i];
-    c.lastChild.textContent = dias.join('');
-    c.lastChild.classList.toggle('is-on', dias.length > 0);
-    semana.appendChild(c);
-  }
-  semana.setAttribute('aria-label', rotulosAria.length
-    ? `Esta semana. ${rotulosAria.join('. ')}.`
-    : 'Nenhum treino nesta semana.');
-  box.appendChild(semana);
+  box.appendChild(criarFaixaSemana(filtradas));
 }
 
 function fmtDuracao(series) {
@@ -1212,7 +1293,8 @@ function renderHistorico() {
           <span class="hist-badge" aria-hidden="true"></span>
           <div class="hist-group-title"><strong></strong><span></span></div>
         </div>`;
-      grupo.querySelector('.hist-badge').textContent = dia;
+      grupo.querySelector('.hist-badge').textContent = EMOJIS_TREINO[dia];
+      grupo.querySelector('.hist-badge').dataset.dia = dia;
       grupo.querySelector('strong').textContent = NOMES_TREINO[dia];
       grupo.querySelector('.hist-group-title span').textContent = meta.join(' · ');
 
@@ -1274,6 +1356,7 @@ function ligarHistorico() {
    ===================================================================== */
 
 const PROFUNDIDADE = { inicio: 0, historico: 1, treino: 1, exercicio: 2 };
+const ABAS = new Set(['inicio', 'historico']);
 const rolagens = {};   // posição de cada tela, para voltar ao mesmo ponto da lista
 
 function listaRolavel(view) { return view.querySelector('.scroll-list, .hist-scroll'); }
@@ -1283,6 +1366,7 @@ function mostrar(tela, { animar = true } = {}) {
   const saindo = views.find((v) => v.dataset.view === estado.tela);
   const entrando = views.find((v) => v.dataset.view === tela);
   const voltando = PROFUNDIDADE[tela] < PROFUNDIDADE[estado.tela];
+  const entreAbas = ABAS.has(tela) && ABAS.has(estado.tela);   // trocar de aba não desliza a tela
 
   const listaSaindo = listaRolavel(saindo);
   rolagens[estado.tela] = { view: saindo.scrollTop, lista: listaSaindo ? listaSaindo.scrollTop : 0 };
@@ -1309,13 +1393,21 @@ function mostrar(tela, { animar = true } = {}) {
   if (tela === 'historico') renderHistorico();
   atualizarSync();
 
+  const tabbar = $('#tabbar');
+  tabbar.classList.toggle('is-off', !ABAS.has(tela));
+  tabbar.inert = !ABAS.has(tela);
+  tabbar.querySelectorAll('.tab').forEach((b) => {
+    if (b.dataset.aba === tela) b.setAttribute('aria-current', 'page');
+    else b.removeAttribute('aria-current');
+  });
+
   const lista = listaRolavel(entrando);
   const salvo = voltando ? rolagens[tela] : null;
   entrando.scrollTop = salvo ? salvo.view : 0;
   if (lista) lista.scrollTop = salvo ? salvo.lista : 0;
 
   if (saindo === entrando) return;
-  if (animar) animarTroca(saindo, entrando, voltando, posicoes);
+  if (animar && !entreAbas) animarTroca(saindo, entrando, voltando, posicoes);
   else saindo.hidden = true;
 }
 
@@ -1380,7 +1472,12 @@ function iniciar() {
   // Navegação
   document.querySelectorAll('.dia-btn').forEach((b) => b.addEventListener('click', () => escolherDia(b.dataset.dia)));
   document.querySelectorAll('[data-back]').forEach((b) => b.addEventListener('click', voltar));
-  $('#btn-historico').addEventListener('click', () => irPara('historico'));
+  document.querySelectorAll('.tab').forEach((b) => b.addEventListener('click', () => {
+    if (b.dataset.aba === estado.tela) return;
+    vibrar(5);
+    if (b.dataset.aba === 'historico') irPara('historico');
+    else voltar();
+  }));
 
   // Novo exercício
   $('#btn-novo-ex').addEventListener('click', abrirSheet);
