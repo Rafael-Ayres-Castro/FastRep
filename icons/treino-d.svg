@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+  <title>Treino D — Ombros (desenvolvimento)</title>
+  <circle cx="24" cy="19" r="3.2"/>
+  <path d="M19 25H29L27 35H21Z"/>
+  <path d="M19 25L11 22L12 12M29 25L37 22L36 12"/>
+  <path d="M8 11H16M8 8V14M16 8V14M32 11H40M32 8V14M40 8V14"/>
+  <path d="M22 35L21 44M26 35L27 44"/>
+</svg>

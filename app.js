@@ -355,7 +355,6 @@ function atualizarSync() {
 
 const DIAS = ['A', 'B', 'C', 'D'];
 const NOMES_TREINO = { A: 'Peito Day', B: 'Costas Day', C: 'Leg Day', D: 'Ombro Day' };
-const EMOJIS_TREINO = { A: '🦍', B: '🦅', C: '🦵', D: '🤷' };
 const REPS_PADRAO = 12;
 
 const estado = {
@@ -650,8 +649,7 @@ function renderTreino() {
 
   const totalHoje = cache.filter((s) => s.dia_treino === dia && chaveData(s.criado_em) === hojeChave()).length;
   $('#treino-resumo').textContent = totalHoje ? `${totalHoje} ${totalHoje === 1 ? 'série' : 'séries'} hoje` : 'Nenhuma série hoje';
-  $('#treino-emoji').textContent = EMOJIS_TREINO[dia];
-  $('#treino-emoji').dataset.dia = dia;
+  $('#treino-icone').dataset.dia = dia;
   $('#treino-semana').replaceChildren(criarFaixaSemana(cache.filter((s) => s.dia_treino === dia)));
 
   const lista = $('#ex-list');
@@ -1293,7 +1291,6 @@ function renderHistorico() {
           <span class="hist-badge" aria-hidden="true"></span>
           <div class="hist-group-title"><strong></strong><span></span></div>
         </div>`;
-      grupo.querySelector('.hist-badge').textContent = EMOJIS_TREINO[dia];
       grupo.querySelector('.hist-badge').dataset.dia = dia;
       grupo.querySelector('strong').textContent = NOMES_TREINO[dia];
       grupo.querySelector('.hist-group-title span').textContent = meta.join(' · ');

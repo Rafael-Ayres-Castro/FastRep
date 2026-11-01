@@ -1,6 +1,6 @@
 /* Service worker básico: guarda o app no aparelho para abrir offline.
    Ao alterar qualquer arquivo do app, aumente a VERSAO para forçar atualização. */
-const VERSAO = 'fastrep-v13';
+const VERSAO = 'fastrep-v14';
 
 const ARQUIVOS = [
   './',
@@ -10,6 +10,10 @@ const ARQUIVOS = [
   './manifest.json',
   './vendor/supabase.min.js',
   './icons/icon.svg',
+  './icons/treino-a.svg',
+  './icons/treino-b.svg',
+  './icons/treino-c.svg',
+  './icons/treino-d.svg',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-maskable-512.png',

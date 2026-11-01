@@ -46,11 +46,19 @@
   --r-sm: 14px;
 }
 
-/* A cor de cada treino: A laranja, B verde, C vermelho, D azul. */
-[data-dia="A"] { --cor: var(--orange); }
-[data-dia="B"] { --cor: var(--green); }
-[data-dia="C"] { --cor: var(--red); }
-[data-dia="D"] { --cor: var(--blue); }
+/* A cor e o ícone de cada treino: A laranja, B verde, C vermelho, D azul. */
+[data-dia="A"] { --cor: var(--orange); --ic: url("icons/treino-a.svg"); }
+[data-dia="B"] { --cor: var(--green); --ic: url("icons/treino-b.svg"); }
+[data-dia="C"] { --cor: var(--red); --ic: url("icons/treino-c.svg"); }
+[data-dia="D"] { --cor: var(--blue); --ic: url("icons/treino-d.svg"); }
+
+/* O ícone é uma máscara: herda a cor do texto do bloco em que está. */
+.ic-treino, .treino-icone::before, .hist-badge::before {
+  background-color: currentColor;
+  -webkit-mask: var(--ic) center / contain no-repeat;
+          mask: var(--ic) center / contain no-repeat;
+}
+.treino-icone::before, .hist-badge::before { content: ""; width: 72%; height: 72%; }
 
 *, *::before, *::after { box-sizing: border-box; }
 
@@ -240,7 +248,7 @@ body.sheet-aberto .view:not([hidden]) { transform: scale(0.96); }
 }
 .dia-label { font-size: 16px; font-weight: 500; }
 .dia-base { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; }
-.dia-emoji { margin-left: auto; font-size: 50px; line-height: 1; }
+.dia-icone { margin-left: auto; width: 54px; height: 54px; flex-shrink: 0; }
 .dia-ultimo {
   display: none; margin-bottom: 4px; padding: 3px 9px; border-radius: 999px;
   background: var(--bg); color: var(--text);
@@ -269,11 +277,10 @@ body.sheet-aberto .view:not([hidden]) { transform: scale(0.96); }
 
 /* ---------- TELA 2: lista de exercícios ---------- */
 .treino-head { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
-.treino-emoji {
+.treino-icone {
   width: 60px; height: 60px; border-radius: 20px; flex-shrink: 0;
-  background: var(--cor);
+  background: var(--cor); color: #FFFFFF;
   display: grid; place-items: center;
-  font-size: 34px; line-height: 1;
 }
 .title-stack { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-variant-numeric: tabular-nums; }
 .title-stack strong { font-size: 18px; font-weight: 500; }
@@ -520,9 +527,8 @@ body.sheet-aberto .view:not([hidden]) { transform: scale(0.96); }
 .hist-group-head { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
 .hist-badge {
   width: 46px; height: 46px; border-radius: 16px; flex-shrink: 0;
-  background: var(--cor);
+  background: var(--cor); color: #FFFFFF;
   display: grid; place-items: center;
-  font-size: 26px; line-height: 1;
 }
 .hist-group-title { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .hist-group-title strong { font-size: 17px; font-weight: 500; line-height: 1.2; }
@@ -631,7 +637,7 @@ body.sheet-aberto .view:not([hidden]) { transform: scale(0.96); }
   .reps-grid { gap: 6px; }
   .carga { gap: 6px; }
   .carga-row { height: 50px; }
-  .treino-emoji { width: 48px; height: 48px; border-radius: 16px; font-size: 28px; }
+  .treino-icone { width: 48px; height: 48px; border-radius: 16px; }
 }
 
 /* Telas muito baixas (iPhone SE de 568px): anel ao lado do nome, para a carga não ficar sob o botão */
@@ -651,7 +657,7 @@ body.sheet-aberto .view:not([hidden]) { transform: scale(0.96); }
   .cta { font-size: 16px; }
   .cta-sub { display: none; }
   .carga-btn { width: 68px; }
-  .dia-emoji { font-size: 42px; }
+  .dia-icone { width: 46px; height: 46px; }
   .reps-grid { gap: 6px; }
   .rep-btn { font-size: 17px; }
   .topbar-title { font-size: 16px; }
@@ -681,5 +687,5 @@ body.sheet-aberto .view:not([hidden]) { transform: scale(0.96); }
   .grafico, .ex-item, .chip, .hist-group, .carga-display, .rep-btn, .step-btn, .carga-btn, .toggle-chip, .select-wrap, .dia-chips button, .sheet {
     outline: 1px solid var(--line); outline-offset: -1px;
   }
-  .dia-btn[data-dia="A"], .hist-stat[data-dia="A"] { color: var(--on-accent); }
+  .dia-btn[data-dia="A"], .hist-stat[data-dia="A"], .treino-icone[data-dia="A"], .hist-badge[data-dia="A"] { color: var(--on-accent); }
 }
