@@ -216,10 +216,11 @@ body.sheet-aberto .view:not([hidden]) { transform: scale(0.96); }
 }
 .grafico-linha {
   position: absolute; left: -24px; right: 0; height: 0;
-  border-top: 1px dashed var(--line);
+  border-top: 1px solid var(--line);
   font-size: 12px; line-height: 0; color: var(--muted); font-variant-numeric: tabular-nums;
 }
 .grafico-col { position: relative; flex: 1; min-width: 0; height: 100%; display: flex; align-items: flex-end; }
+.grafico-col:active { transform: none; opacity: 0.75; }
 .grafico-barra { position: relative; width: 100%; min-height: 6px; border-radius: 10px 10px 4px 4px; background: var(--accent); }
 .grafico-barra.is-pico { background: var(--orange); }
 .grafico-barra.is-vazia { height: 6px; border-radius: 3px; background: var(--surface-2); }
@@ -265,7 +266,7 @@ body.sheet-aberto .view:not([hidden]) { transform: scale(0.96); }
   padding: 8px var(--pad) var(--tab-base);
   background: var(--bg);
   border-top: 1px solid var(--line);
-  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
   transition: transform 260ms var(--ease-drawer);
 }
 .tabbar.is-off { transform: translate3d(0, 100%, 0); }
@@ -496,13 +497,20 @@ body.sheet-aberto .view:not([hidden]) { transform: scale(0.96); }
 .hist-stat svg { position: absolute; top: 12px; right: 12px; width: 22px; height: 22px; }
 .hist-stat strong { font-weight: 500; font-size: 28px; line-height: 1; white-space: nowrap; font-variant-numeric: tabular-nums; }
 
-.hist-semana {
-  margin-top: 14px;
-  display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px;
-}
+.seletor-dia { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
 #treino-semana { flex-shrink: 0; }
-#treino-semana .hist-semana { margin-top: 0; }
+#treino-semana .seletor-dia { margin-top: 0; }
+.seletor-head { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px 44px; align-items: center; }
+.seletor-periodo { text-align: center; font-size: 14px; font-weight: 500; color: var(--text-2); font-variant-numeric: tabular-nums; }
+button.seletor-periodo { height: 34px; justify-self: center; padding: 0 12px; border-radius: 999px; background: var(--accent); color: var(--on-accent); white-space: nowrap; }
+.nav-dia { position: relative; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; color: var(--text); }
+.nav-dia svg { width: 20px; height: 20px; }
+.nav-dia:disabled { opacity: 0.25; }
+.seletor-cal { cursor: pointer; }
+.seletor-cal input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; font-size: 16px; }
+.hist-semana { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
 .hist-semana-dia { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; }
+.hist-semana-dia:disabled { opacity: 0.35; }
 .hist-semana-dia span { font-size: 13px; color: var(--muted); }
 .hist-semana-dia.is-hoje span { color: var(--text); font-weight: 500; }
 .hist-semana-dia b {
@@ -513,8 +521,68 @@ body.sheet-aberto .view:not([hidden]) { transform: scale(0.96); }
   font-variant-numeric: tabular-nums;
 }
 .hist-semana-dia.is-hoje b { box-shadow: inset 0 0 0 2px var(--text-2); }
-.hist-semana-dia b.is-on { background: var(--cor, var(--accent)); color: #FFFFFF; box-shadow: none; }
-.hist-semana-dia b.is-on:not([data-dia]) { color: var(--on-accent); }
+.hist-semana-dia b.is-on { background: var(--cor, #FFFFFF); color: #FFFFFF; box-shadow: none; }
+.hist-semana-dia b.is-on:not([data-dia]) { color: var(--bg); }
+.hist-semana-dia.is-sel b { background: var(--accent); color: var(--on-accent); box-shadow: none; }
+.hist-semana-dia.is-sel span { color: var(--text); font-weight: 500; }
+
+.feitas-nav { display: flex; align-items: center; min-width: 0; }
+.feitas-nav .nav-dia:first-child { margin-left: -12px; }
+
+/* ---------- TELA 5: gráficos ---------- */
+#graf-conteudo { display: flex; flex-direction: column; gap: 12px; }
+#graf-conteudo .filter-bar { gap: 6px; }
+#graf-conteudo .seletor-dia { margin-top: 0; }
+.gr-card { padding: 16px; border-radius: var(--r-md); background: var(--surface); display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.gr-titulo { margin: 0; font-size: 17px; font-weight: 500; }
+.gr-sub { margin: -6px 0 0; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.gr-card .dia-chips { grid-template-columns: repeat(var(--n, 5), minmax(0, 1fr)); }
+.gr-card .dia-chips button { height: 40px; background: var(--surface-2); font-size: 13px; }
+.gr-card .dia-chips button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+.gr-select { background: var(--surface-2); }
+.gr-leitura { margin: 2px 0 0; display: flex; align-items: baseline; gap: 8px; font-variant-numeric: tabular-nums; }
+.gr-leitura strong { font-size: 24px; font-weight: 500; }
+.gr-leitura span { font-size: 13px; color: var(--muted); }
+.gr-svg { display: block; width: 100%; height: auto; margin-top: 6px; stroke: none; font-family: var(--font); overflow: visible; }
+.gr-svg rect { outline: none; cursor: pointer; }
+.gr-svg rect:focus-visible { stroke: var(--accent); stroke-width: 2; }
+.gr-tiles { gap: 10px; }
+.gr-tile { height: auto; min-height: 104px; gap: 8px; }
+.gr-tile:not([data-dia]) { background: var(--surface); }
+.gr-tile small { font-size: 12px; opacity: 0.85; min-height: 15px; font-variant-numeric: tabular-nums; }
+.gr-grade { margin: 4px 0 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 14px; }
+.gr-grade dt { font-size: 12px; color: var(--muted); }
+.gr-grade dd { margin: 2px 0 0; font-size: 16px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.hist-ex.gr-dia-ex { margin-left: 0; padding: 10px 0 2px; }
+.gr-dist { display: grid; grid-template-columns: 56px minmax(0, 1fr) 32px; align-items: center; gap: 8px; font-size: 14px; font-variant-numeric: tabular-nums; }
+.gr-dist-trilha { height: 14px; border-radius: 4px; background: var(--surface-2); overflow: hidden; display: block; }
+.gr-dist-trilha i { display: block; height: 100%; border-radius: 0 4px 4px 0; background: var(--cor); }
+.gr-dist-n { text-align: right; font-weight: 500; }
+.gr-mapa { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, 16px); grid-template-columns: repeat(var(--colunas), 16px); gap: 3px; justify-content: space-between; }
+.gr-celula { width: 16px; height: 16px; border-radius: 4px; }
+.gr-celula:active { transform: none; }
+.gr-celula.is-sel { box-shadow: 0 0 0 2px var(--text); }
+[data-nivel="0"] { background: var(--surface-2); }
+[data-nivel="1"] { background: rgba(249, 213, 91, 0.3); }
+[data-nivel="2"] { background: rgba(249, 213, 91, 0.5); }
+[data-nivel="3"] { background: rgba(249, 213, 91, 0.75); }
+[data-nivel="4"] { background: var(--accent); }
+.gr-legenda { display: flex; align-items: center; justify-content: flex-end; gap: 4px; font-size: 12px; color: var(--muted); }
+.gr-legenda i { width: 12px; height: 12px; border-radius: 3px; }
+.gr-legenda i:first-of-type { margin-left: 4px; }
+.gr-legenda i:last-of-type { margin-right: 4px; }
+.gr-recorde { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+.gr-recorde > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.gr-recorde strong { font-size: 15px; font-weight: 500; overflow-wrap: anywhere; }
+.gr-recorde span { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.gr-recorde-valor { align-items: flex-end; flex-shrink: 0; }
+.gr-recorde-valor b { font-size: 17px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.gr-resumo { border-top: 1px solid var(--line); }
+.gr-resumo summary { min-height: 48px; display: flex; align-items: center; gap: 10px; cursor: pointer; list-style: none; }
+.gr-resumo summary::-webkit-details-marker { display: none; }
+.gr-resumo-nome { flex: 1; min-width: 0; font-size: 15px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gr-mini { width: 56px; height: 22px; stroke: none; }
+.gr-resumo .gr-grade { padding: 2px 0 14px; }
 
 .hist-date { margin: 24px 0 12px; display: flex; align-items: center; gap: 12px; font-size: inherit; font-weight: inherit; }
 .hist-date-num { font-weight: 500; font-size: 36px; line-height: 1; font-variant-numeric: tabular-nums; }

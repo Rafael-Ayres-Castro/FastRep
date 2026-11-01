@@ -199,6 +199,7 @@ async function processarFila() {
     sincronizando = false;
     atualizarSync();
     if (estado.tela === 'historico') renderHistorico();
+    if (estado.tela === 'graficos') renderGraficos();
   }
 }
 
@@ -309,6 +310,7 @@ function atualizarTelaComDados() {
   if (estado.tela === 'treino') renderTreino();
   if (estado.tela === 'exercicio') renderExercicio();
   if (estado.tela === 'historico') renderHistorico();
+  if (estado.tela === 'graficos') renderGraficos();
 }
 
 async function sincronizar() {
@@ -367,6 +369,14 @@ const estado = {
   filtroDia: 'todos',
   filtroEx: 'todos',
   editando: null,   // nome do exercício aberto no sheet de edição
+  diaSel: null,     // dia escolhido nas faixas de semana ('2026-10-31'); null = hoje no treino, todos no histórico
+  semanaDesl: 0,    // quantas semanas a faixa está deslocada em relação à atual
+  diaVerEx: null,   // dia mostrado em "Feitas" na tela de registro; null = hoje
+  grafPeriodo: '30',
+  grafTreino: 'todos',
+  grafEx: null,
+  grafMetrica: 'rm',
+  grafGeral: 'series',
 };
 
 let exerciciosPorDia = Object.assign({ A: [], B: [], C: [], D: [] }, store.ler(CHAVES.exercicios, {}));
@@ -388,6 +398,17 @@ function chaveData(dataOuIso) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 const hojeChave = () => chaveData(new Date());
+
+function parseChave(chave) {
+  const [a, m, d] = chave.split('-').map(Number);
+  return new Date(a, m - 1, d);
+}
+
+/* "28 out" */
+function dataCurtinha(chave) {
+  const d = parseChave(chave);
+  return `${d.getDate()} ${d.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '')}`;
+}
 
 function capitalizar(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
 
@@ -416,6 +437,11 @@ function fmtSerie(reps, carga) {
   return carga == null ? `${reps} reps` : `${reps} × ${fmtKg(carga)} kg`;
 }
 
+function fmtVolume(kg) {
+  if (kg >= 10000) return `${(kg / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} t`;
+  return `${Math.round(kg).toLocaleString('pt-BR')} kg`;
+}
+
 function lerNumero(txt) {
   const n = parseFloat(String(txt).replace(',', '.').replace(/[^\d.]/g, ''));
   return Number.isFinite(n) ? n : null;
@@ -426,11 +452,14 @@ function normalizarNome(txt) {
   return s ? capitalizar(s) : '';
 }
 
-function seriesHoje(dia, exercicio) {
-  const hoje = hojeChave();
+function seriesDoDia(dia, exercicio, chave) {
   return cache
-    .filter((s) => s.dia_treino === dia && s.exercicio === exercicio && chaveData(s.criado_em) === hoje)
+    .filter((s) => s.dia_treino === dia && s.exercicio === exercicio && chaveData(s.criado_em) === chave)
     .sort((a, b) => a.numero_serie - b.numero_serie);
+}
+
+function seriesHoje(dia, exercicio) {
+  return seriesDoDia(dia, exercicio, hojeChave());
 }
 
 /* Séries idênticas (mesmas reps e carga) viram um único grupo, na ordem da primeira. */
@@ -471,32 +500,87 @@ function ultimaSerieDe(exercicio) {
   return null;
 }
 
-/* Faixa da semana, de segunda a domingo: cada dia treinado ganha a cor do treino
-   (amarelo quando houve mais de um treino no dia). */
-function criarFaixaSemana(series) {
+function semanaDeslDe(chave) {
+  const segunda = (d) => { const x = new Date(d); x.setDate(x.getDate() - (x.getDay() + 6) % 7); x.setHours(12, 0, 0, 0); return x; };
+  return Math.round((segunda(parseChave(chave)) - segunda(new Date())) / (7 * 86400000));
+}
+
+/* Tocar de novo no dia já escolhido desfaz a escolha. */
+function selecionarDia(chave, aoMudar, manter = false) {
+  estado.diaSel = !manter && estado.diaSel === chave ? null : chave;
+  estado.semanaDesl = estado.diaSel ? semanaDeslDe(estado.diaSel) : estado.semanaDesl;
+  vibrar(5);
+  aoMudar();
+}
+
+/* Seletor de dia: semana de segunda a domingo, setas para trocar de semana e calendário
+   para ir a qualquer data. Dia treinado ganha a cor do treino (branco se houve mais de um). */
+function criarSeletorDia(series, aoMudar, { hojePadrao = false } = {}) {
+  const hoje = hojeChave();
+  const inicio = new Date();
+  inicio.setDate(inicio.getDate() - (inicio.getDay() + 6) % 7 + estado.semanaDesl * 7);
+  const dias = Array.from({ length: 7 }, (_, i) => { const d = new Date(inicio); d.setDate(d.getDate() + i); return d; });
+
+  const box = document.createElement('div');
+  box.className = 'seletor-dia';
+  const head = document.createElement('div');
+  head.className = 'seletor-head';
+  const seta = (rotulo, caminho, delta, desativada) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'nav-dia';
+    b.setAttribute('aria-label', rotulo);
+    b.disabled = desativada;
+    b.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${caminho}"/></svg>`;
+    b.addEventListener('click', () => { estado.semanaDesl += delta; vibrar(5); aoMudar(); });
+    return b;
+  };
+  const meio = document.createElement(estado.diaSel ? 'button' : 'span');
+  meio.className = 'seletor-periodo';
+  if (estado.diaSel) {
+    meio.type = 'button';
+    meio.classList.add('is-sel');
+    meio.textContent = `${capitalizar(dataCurta(parseChave(estado.diaSel)))} ×`;
+    meio.setAttribute('aria-label', hojePadrao ? 'Voltar para hoje' : 'Ver todos os dias');
+    meio.addEventListener('click', () => { estado.diaSel = null; estado.semanaDesl = 0; vibrar(5); aoMudar(); });
+  } else {
+    meio.textContent = `${dataCurtinha(chaveData(dias[0]))} – ${dataCurtinha(chaveData(dias[6]))}`;
+  }
+  const cal = document.createElement('label');
+  cal.className = 'nav-dia seletor-cal';
+  cal.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="3"/><path d="M4 10h16M8 3v4M16 3v4"/></svg><input type="date" aria-label="Escolher uma data">';
+  const campo = cal.querySelector('input');
+  campo.max = hoje;
+  campo.value = estado.diaSel || hoje;
+  campo.addEventListener('click', () => { try { campo.showPicker(); } catch (e) { /* o toque já abre o seletor */ } });
+  campo.addEventListener('change', () => { if (campo.value && campo.value <= hoje) selecionarDia(campo.value, aoMudar, true); });
+  head.append(seta('Semana anterior', 'm15 18-6-6 6-6', -1, false), meio, seta('Próxima semana', 'm9 18 6-6-6-6', 1, estado.semanaDesl >= 0), cal);
+  box.appendChild(head);
+
   const semana = document.createElement('div');
   semana.className = 'hist-semana';
-  semana.setAttribute('role', 'img');
-  const rotulosAria = [];
-  const hojeNaSemana = (new Date().getDay() + 6) % 7;   // segunda = 0 ... domingo = 6
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(); d.setDate(d.getDate() - hojeNaSemana + i);
+  semana.setAttribute('role', 'group');
+  semana.setAttribute('aria-label', 'Escolher o dia');
+  dias.forEach((d, i) => {
     const k = chaveData(d);
-    const dias = [...new Set(series.filter((s) => chaveData(s.criado_em) === k).map((s) => s.dia_treino))].sort();
-    if (dias.length) rotulosAria.push(`${dataCurta(d)}: ${dias.map((x) => NOMES_TREINO[x]).join(' e ')}`);
-    const c = document.createElement('div');
-    c.className = 'hist-semana-dia' + (i === hojeNaSemana ? ' is-hoje' : '');
+    const treinos = [...new Set(series.filter((s) => chaveData(s.criado_em) === k).map((s) => s.dia_treino))].sort();
+    const sel = estado.diaSel ? estado.diaSel === k : hojePadrao && k === hoje;
+    const c = document.createElement('button');
+    c.type = 'button';
+    c.className = 'hist-semana-dia' + (k === hoje ? ' is-hoje' : '') + (sel ? ' is-sel' : '');
+    c.disabled = k > hoje;
+    c.setAttribute('aria-pressed', String(sel));
+    c.setAttribute('aria-label', `${dataCurta(d)}${treinos.length ? `: ${treinos.map((x) => NOMES_TREINO[x]).join(' e ')}` : ''}`);
     c.innerHTML = '<b></b><span></span>';
     c.firstChild.textContent = d.getDate();
-    c.firstChild.classList.toggle('is-on', dias.length > 0);
-    if (dias.length === 1) c.firstChild.dataset.dia = dias[0];
+    c.firstChild.classList.toggle('is-on', treinos.length > 0);
+    if (treinos.length === 1) c.firstChild.dataset.dia = treinos[0];
     c.lastChild.textContent = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'][i];
+    c.addEventListener('click', () => selecionarDia(k, aoMudar));
     semana.appendChild(c);
-  }
-  semana.setAttribute('aria-label', rotulosAria.length
-    ? `Esta semana. ${rotulosAria.join('. ')}.`
-    : 'Nenhum treino nesta semana.');
-  return semana;
+  });
+  box.appendChild(semana);
+  return box;
 }
 
 function gravarExercicios() { store.gravar(CHAVES.exercicios, exerciciosPorDia); }
@@ -583,11 +667,8 @@ function renderGraficoSemana() {
     <div class="grafico-dias" aria-hidden="true"></div>`;
   const plot = box.querySelector('.grafico-plot');
   const rotulos = box.querySelector('.grafico-dias');
-  plot.setAttribute('role', 'img');
-  const comSeries = dias.filter((x) => x.n > 0).map((x) => `${dataCurta(x.d)}: ${x.n}`);
-  plot.setAttribute('aria-label', comSeries.length
-    ? `Séries nos últimos 7 dias. ${comSeries.join('. ')}.`
-    : 'Nenhuma série nos últimos 7 dias.');
+  plot.setAttribute('role', 'group');
+  plot.setAttribute('aria-label', 'Séries nos últimos 7 dias. Toque em um dia para ver o histórico dele.');
 
   for (let v = 0; v <= topo; v += passo) {
     const linha = document.createElement('span');
@@ -597,8 +678,16 @@ function renderGraficoSemana() {
     plot.appendChild(linha);
   }
   dias.forEach(({ d, n, hoje }) => {
-    const col = document.createElement('div');
+    const col = document.createElement('button');
+    col.type = 'button';
     col.className = 'grafico-col';
+    col.setAttribute('aria-label', `${dataCurta(d)}: ${n} ${n === 1 ? 'série' : 'séries'}`);
+    col.addEventListener('click', () => {
+      vibrar(5);
+      estado.diaSel = chaveData(d);
+      estado.semanaDesl = semanaDeslDe(estado.diaSel);
+      irPara('historico');
+    });
     const barra = document.createElement('div');
     barra.className = 'grafico-barra' + (n > 0 && n === max ? ' is-pico' : '') + (n === 0 ? ' is-vazia' : '');
     barra.style.height = n ? `${(n / topo) * 100}%` : '';
@@ -629,11 +718,15 @@ function escolherDia(dia) {
    4b. TELA TREINO (lista de exercícios do dia)
    ===================================================================== */
 
+const chaveTreino = () => estado.diaSel ?? hojeChave();
+
 function resumoExercicio(nome) {
-  const hoje = seriesHoje(estado.dia, nome);
-  if (hoje.length) {
-    return { hoje: hoje.length, grupos: agruparSeries(hoje) };
+  const chave = chaveTreino();
+  const doDia = seriesDoDia(estado.dia, nome, chave);
+  if (doDia.length) {
+    return { hoje: doDia.length, grupos: agruparSeries(doDia) };
   }
+  if (chave !== hojeChave()) return { hoje: 0, texto: 'Sem registro nesse dia' };
   const ultima = ultimaSerieDe(nome);
   if (!ultima) return { hoje: 0, texto: 'Sem registro ainda' };
   const k = chaveData(ultima.criado_em);
@@ -645,16 +738,21 @@ function resumoExercicio(nome) {
 function renderTreino() {
   const dia = estado.dia;
   $('#treino-dia').textContent = NOMES_TREINO[dia];
-  $('#treino-data').textContent = capitalizar(dataCurta(new Date()));
+  const chave = chaveTreino();
+  const eHoje = chave === hojeChave();
+  $('#treino-data').textContent = capitalizar(dataCurta(parseChave(chave)));
 
-  const totalHoje = cache.filter((s) => s.dia_treino === dia && chaveData(s.criado_em) === hojeChave()).length;
-  $('#treino-resumo').textContent = totalHoje ? `${totalHoje} ${totalHoje === 1 ? 'série' : 'séries'} hoje` : 'Nenhuma série hoje';
+  const doDia = cache.filter((s) => s.dia_treino === dia && chaveData(s.criado_em) === chave);
+  const quando = eHoje ? 'hoje' : 'nesse dia';
+  $('#treino-resumo').textContent = doDia.length ? `${doDia.length} ${doDia.length === 1 ? 'série' : 'séries'} ${quando}` : `Nenhuma série ${quando}`;
   $('#treino-icone').dataset.dia = dia;
-  $('#treino-semana').replaceChildren(criarFaixaSemana(cache.filter((s) => s.dia_treino === dia)));
+  $('#treino-semana').replaceChildren(criarSeletorDia(cache.filter((s) => s.dia_treino === dia), renderTreino, { hojePadrao: true }));
 
   const lista = $('#ex-list');
   lista.innerHTML = '';
-  const nomes = exerciciosPorDia[dia] || [];
+  // Em um dia passado, entram também os exercícios que depois saíram da lista do treino.
+  const nomes = [...(exerciciosPorDia[dia] || [])];
+  if (!eHoje) doDia.forEach((s) => { if (!nomes.includes(s.exercicio)) nomes.push(s.exercicio); });
 
   nomes.forEach((nome) => {
     const r = resumoExercicio(nome);
@@ -666,7 +764,7 @@ function renderTreino() {
     btn.innerHTML = `
       <span class="ex-info"><span class="ex-title"></span><span class="ex-sub"></span></span>
       ${r.hoje
-        ? `<span class="ex-count" aria-label="${r.hoje} séries hoje">${r.hoje}</span>`
+        ? `<span class="ex-count" aria-label="${r.hoje} séries ${quando}">${r.hoje}</span>`
         : '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>'}`;
     btn.querySelector('.ex-title').textContent = nome;
     const sub = btn.querySelector('.ex-sub');
@@ -929,6 +1027,7 @@ let timerFeedback = null;
 
 function abrirExercicio(nome) {
   estado.exercicio = nome;
+  estado.diaVerEx = estado.diaSel && estado.diaSel !== hojeChave() ? estado.diaSel : null;
   const ultima = ultimaSerieDe(nome);
   const padrao = padraoDe(nome);
   estado.reps = padrao.reps ?? (ultima ? ultima.repeticoes : REPS_PADRAO);
@@ -1009,21 +1108,33 @@ function renderExercicio({ animarNova = false } = {}) {
   $('#serie-num').textContent = feitas.length + 1;
   renderAnel(feitas.length);
 
+  // O número e o anel são sempre de hoje; "Feitas" pode mostrar outro dia deste exercício.
+  const hoje = hojeChave();
+  const chaveVer = estado.diaVerEx ?? hoje;
+  const vendo = chaveVer === hoje ? feitas : seriesDoDia(estado.dia, estado.exercicio, chaveVer);
+  $('#feitas-titulo').textContent = chaveVer === hoje ? 'Feitas hoje' : `Feitas em ${dataCurtinha(chaveVer)}`;
+  const datas = [...new Set(cache.filter((s) => s.dia_treino === estado.dia && s.exercicio === estado.exercicio).map((s) => chaveData(s.criado_em)))].sort();
+  estado.feitasAnt = datas.filter((k) => k < chaveVer).pop() ?? null;
+  estado.feitasProx = chaveVer === hoje ? null : datas.find((k) => k > chaveVer && k < hoje) ?? hoje;
+  $('#feitas-ant').hidden = !estado.feitasAnt;
+  $('#feitas-prox').hidden = !estado.feitasProx;
+
   const pend = idsPendentes();
   const chips = $('#feitas-chips');
   chips.innerHTML = '';
   const chaveNova = animarNova && feitas.length ? chaveGrupo(feitas[feitas.length - 1]) : null;
   let chipNovo = null;
-  agruparSeries(feitas).forEach((grupo) => {
+  agruparSeries(vendo).forEach((grupo) => {
     const c = criarChipSerie(grupo, 'chip');
     if (c.dataset.chave === chaveNova) { c.classList.add('is-new'); chipNovo = c; }
     if (grupo.some((s) => pend.has(s.id))) c.title = 'Aguardando envio';
     chips.appendChild(c);
   });
-  chips.scrollLeft = chipNovo ? chipNovo.offsetLeft - 16 : chips.scrollWidth;
+  chips.scrollLeft = chipNovo ? chipNovo.offsetLeft - 16 : chaveVer === hoje ? chips.scrollWidth : 0;
 
-  $('#feitas-vazio').hidden = feitas.length > 0;
-  $('#btn-desfazer').hidden = feitas.length === 0;
+  $('#feitas-vazio').hidden = vendo.length > 0;
+  $('#feitas-vazio').textContent = chaveVer === hoje ? 'Nenhuma série ainda. Escolha as reps e registre.' : 'Nenhuma série neste dia.';
+  $('#btn-desfazer').hidden = chaveVer !== hoje || feitas.length === 0;
   renderControles();
 }
 
@@ -1053,6 +1164,7 @@ function registrarSerie() {
   gravarCache();
   enfileirarInsert(serie);
 
+  estado.diaVerEx = null;   // registrar sempre leva de volta para hoje
   vibrar(18);
   feedbackRegistro(serie);
   renderExercicio({ animarNova: true });
@@ -1142,6 +1254,12 @@ function ligarControlesExercicio() {
 
   $('#btn-registrar').addEventListener('click', registrarSerie);
   $('#btn-desfazer').addEventListener('click', desfazerUltima);
+  $('#feitas-ant').addEventListener('click', () => { estado.diaVerEx = estado.feitasAnt; vibrar(5); renderExercicio(); });
+  $('#feitas-prox').addEventListener('click', () => {
+    estado.diaVerEx = estado.feitasProx === hojeChave() ? null : estado.feitasProx;
+    vibrar(5);
+    renderExercicio();
+  });
 }
 
 
@@ -1184,10 +1302,11 @@ function evolucaoExercicios() {
   return evolucao;
 }
 
-function renderResumoHistorico(filtradas) {
+function renderResumoHistorico(filtradas, semFiltroDeDia) {
   const box = $('#hist-resumo');
   box.innerHTML = '';
-  if (!filtradas.length) return;
+  const seletor = criarSeletorDia(semFiltroDeDia, renderHistorico);
+  if (!filtradas.length) { box.appendChild(seletor); return; }
 
   const treinos = new Set(filtradas.map((s) => `${chaveData(s.criado_em)}|${s.dia_treino}`)).size;
   const stats = [
@@ -1206,7 +1325,7 @@ function renderResumoHistorico(filtradas) {
     tiles.appendChild(t);
   });
   box.appendChild(tiles);
-  box.appendChild(criarFaixaSemana(filtradas));
+  box.appendChild(seletor);
 }
 
 function fmtDuracao(series) {
@@ -1242,13 +1361,14 @@ function renderHistorico() {
     b.setAttribute('aria-pressed', String(b.dataset.f === estado.filtroDia));
   });
 
-  const filtradas = cache
+  const semFiltroDeDia = cache
     .filter((s) => estado.filtroDia === 'todos' || s.dia_treino === estado.filtroDia)
     .filter((s) => estado.filtroEx === 'todos' || s.exercicio === estado.filtroEx)
     .slice()
     .sort((a, b) => b.criado_em.localeCompare(a.criado_em));
+  const filtradas = estado.diaSel ? semFiltroDeDia.filter((s) => chaveData(s.criado_em) === estado.diaSel) : semFiltroDeDia;
 
-  renderResumoHistorico(filtradas);
+  renderResumoHistorico(filtradas, semFiltroDeDia);
 
   // data → dia de treino → exercício → séries
   const porData = new Map();
@@ -1325,7 +1445,9 @@ function renderHistorico() {
   const vazio = $('#hist-vazio');
   vazio.hidden = filtradas.length > 0;
   if (!filtradas.length) {
-    vazio.textContent = cache.length
+    vazio.textContent = estado.diaSel
+      ? `Nenhuma série em ${dataCurta(parseChave(estado.diaSel))}.`
+      : cache.length
       ? 'Nenhuma série com esses filtros.'
       : 'Nenhuma série registrada ainda. Bora treinar!';
   }
@@ -1349,11 +1471,586 @@ function ligarHistorico() {
 
 
 /* =====================================================================
+   4f. TELA GRÁFICOS
+   Métricas do modelo de planilha: séries, reps, volume, 1RM estimado (Epley),
+   recorde, maior carga, evolução e volume contra a sessão anterior.
+   ===================================================================== */
+
+const COR_LINHA = '#5B63EE', COR_DESTAQUE = '#F9D55B', COR_PICO = '#F57E20', COR_GRADE = 'rgba(255,255,255,0.08)',
+  COR_TEXTO = 'rgba(255,255,255,0.55)', COR_FUNDO = '#232323';
+
+const METRICAS = {
+  rm: { rotulo: '1RM', titulo: '1RM estimado', fmt: (v) => `${fmtKg(v)} kg` },
+  carga: { rotulo: 'Carga', titulo: 'Maior carga', fmt: (v) => `${fmtKg(v)} kg` },
+  volume: { rotulo: 'Volume', titulo: 'Volume', fmt: fmtVolume },
+  reps: { rotulo: 'Reps', titulo: 'Total de reps', fmt: (v) => `${fmtKg(v)} reps` },
+  series: { rotulo: 'Séries', titulo: 'Séries feitas', fmt: (v) => `${fmtKg(v)} ${v === 1 ? 'série' : 'séries'}` },
+  treinos: { rotulo: 'Treinos', titulo: 'Treinos', fmt: (v) => `${fmtKg(v)} ${v === 1 ? 'treino' : 'treinos'}` },
+};
+
+function resumirSeries(series) {
+  const r = { series: series.length, reps: 0, volume: 0, rm: 0, carga: 0 };
+  series.forEach((s) => {
+    r.reps += s.repeticoes;
+    if (s.carga_kg == null) return;
+    r.volume += s.repeticoes * s.carga_kg;
+    r.carga = Math.max(r.carga, s.carga_kg);
+    r.rm = Math.max(r.rm, s.carga_kg * (1 + s.repeticoes / 30));
+  });
+  return r;
+}
+
+/* Uma sessão é um exercício em uma data: as séries daquele dia viram um único ponto. */
+function sessoesPorData(series) {
+  const porData = new Map();
+  series.forEach((s) => {
+    const k = chaveData(s.criado_em);
+    if (!porData.has(k)) porData.set(k, []);
+    porData.get(k).push(s);
+  });
+  return [...porData.keys()].sort().map((chave) => ({ chave, lista: porData.get(chave), ...resumirSeries(porData.get(chave)) }));
+}
+
+function inicioPeriodo(periodo = estado.grafPeriodo) {
+  if (periodo === 'tudo') return null;
+  const d = new Date(); d.setDate(d.getDate() - Number(periodo) + 1);
+  return chaveData(d);
+}
+
+const doTreinoFiltrado = (s) => estado.grafTreino === 'todos' || s.dia_treino === estado.grafTreino;
+
+function eixoLimpo(min, max) {
+  if (min === max) { min = Math.max(0, min - 1); max += 1; }
+  const bruto = (max - min) / 3;
+  const pot = 10 ** Math.floor(Math.log10(bruto));
+  const passo = [1, 2, 2.5, 5, 10].map((m) => m * pot).find((p) => p >= bruto);
+  const ini = Math.floor(min / passo) * passo;
+  const fim = Math.ceil(max / passo) * passo;
+  const marcas = [];
+  for (let v = ini; v <= fim + passo / 2; v += passo) marcas.push(v);
+  return marcas;
+}
+
+const fmtEixo = (v) => (v >= 1000 ? `${(v / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}k` : v.toLocaleString('pt-BR', { maximumFractionDigits: 1 }));
+const larguraGrafico = () => Math.max(220, Math.min(480, $('#graf-scroll').clientWidth) - 64);
+
+function grade(marcas, y, W, esq) {
+  return marcas.map((v) => `<line x1="${esq}" x2="${W}" y1="${y(v)}" y2="${y(v)}" stroke="${COR_GRADE}"/>`
+    + `<text x="${esq - 6}" y="${y(v) + 4}" text-anchor="end" font-size="11" fill="${COR_TEXTO}">${fmtEixo(v)}</text>`).join('');
+}
+
+function ligarAlvos(svg, escolher) {
+  svg.querySelectorAll('[data-i]').forEach((alvo) => {
+    alvo.addEventListener('click', () => escolher(Number(alvo.dataset.i)));
+    alvo.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); escolher(Number(alvo.dataset.i)); }
+    });
+  });
+}
+
+/* Evolução no tempo: o eixo x respeita a distância real entre as datas. */
+function criarLinha(pontos, fmt) {
+  const box = document.createElement('div');
+  const leitura = document.createElement('p');
+  leitura.className = 'gr-leitura';
+  box.appendChild(leitura);
+  const W = larguraGrafico(), H = 176, esq = 34, dir = 10, topo = 12, base = 24;
+  const dias = (k) => parseChave(k).getTime() / 86400000;
+  const d0 = dias(pontos[0].chave), d1 = dias(pontos[pontos.length - 1].chave);
+  const x = (k) => (d1 === d0 ? (esq + W - dir) / 2 : esq + ((dias(k) - d0) / (d1 - d0)) * (W - esq - dir));
+  const marcas = eixoLimpo(Math.min(...pontos.map((p) => p.valor)), Math.max(...pontos.map((p) => p.valor)));
+  const y = (v) => topo + (1 - (v - marcas[0]) / (marcas[marcas.length - 1] - marcas[0])) * (H - topo - base);
+  const caminho = pontos.map((p, i) => `${i ? 'L' : 'M'}${x(p.chave).toFixed(1)} ${y(p.valor).toFixed(1)}`).join(' ');
+  const fundoY = H - base;
+  const rotulos = (d1 === d0 ? [pontos[0]] : [pontos[0], pontos[pontos.length - 1]])
+    .map((p, i, l) => `<text x="${x(p.chave)}" y="${H - 6}" font-size="11" fill="${COR_TEXTO}" text-anchor="${l.length === 1 ? 'middle' : i ? 'end' : 'start'}">${dataCurtinha(p.chave)}</text>`).join('');
+
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('class', 'gr-svg');
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  const desenhar = () => {
+    let sel = pontos.findIndex((p) => p.chave === estado.diaSel);
+    if (sel < 0) sel = pontos.length - 1;
+    const atual = pontos[sel];
+    const densos = pontos.length > 24;
+    const pontosSvg = pontos.map((p, i) => {
+      if (densos && !p.pr && i !== sel) return '';
+      const destaque = i === sel;
+      return `<circle cx="${x(p.chave)}" cy="${y(p.valor)}" r="${destaque ? 6 : 4}" fill="${p.pr ? COR_DESTAQUE : COR_LINHA}" stroke="${COR_FUNDO}" stroke-width="2"/>`;
+    }).join('');
+    const alvos = pontos.map((p, i) => {
+      const ant = i ? (x(pontos[i - 1].chave) + x(p.chave)) / 2 : 0;
+      const prox = i < pontos.length - 1 ? (x(p.chave) + x(pontos[i + 1].chave)) / 2 : W;
+      return `<rect data-i="${i}" x="${ant}" y="0" width="${prox - ant}" height="${H}" fill="transparent" tabindex="0" role="button" aria-label="${dataCurtinha(p.chave)}: ${fmt(p.valor)}${p.pr ? ', recorde' : ''}"/>`;
+    }).join('');
+    svg.innerHTML = grade(marcas, y, W, esq)
+      + (pontos.length > 1 ? `<path d="${caminho} L${x(pontos[pontos.length - 1].chave)} ${fundoY} L${x(pontos[0].chave)} ${fundoY} Z" fill="${COR_LINHA}" opacity="0.1"/><path d="${caminho}" fill="none" stroke="${COR_LINHA}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>` : '')
+      + `<line x1="${x(atual.chave)}" x2="${x(atual.chave)}" y1="${topo}" y2="${fundoY}" stroke="rgba(255,255,255,0.28)"/>`
+      + pontosSvg + rotulos + alvos;
+    leitura.innerHTML = '<strong></strong><span></span>';
+    leitura.firstChild.textContent = fmt(atual.valor);
+    leitura.lastChild.textContent = `${dataCurtinha(atual.chave)}${atual.pr ? ' · recorde' : ''}`;
+    ligarAlvos(svg, (i) => selecionarDia(pontos[i].chave, () => renderGraficos({ ancorar: true }), true));
+  };
+  desenhar();
+  box.appendChild(svg);
+  return box;
+}
+
+/* Barras de uma série só; tocar mostra o valor daquela barra na leitura acima do gráfico. */
+function criarBarras(pontos, fmt) {
+  const box = document.createElement('div');
+  const leitura = document.createElement('p');
+  leitura.className = 'gr-leitura';
+  box.appendChild(leitura);
+  const W = larguraGrafico(), H = 156, esq = 34, topo = 8, base = 24;
+  const marcas = eixoLimpo(0, Math.max(1, ...pontos.map((p) => p.valor)));
+  const maxY = marcas[marcas.length - 1];
+  const y = (v) => topo + (1 - v / maxY) * (H - topo - base);
+  const vaga = (W - esq) / pontos.length;
+  const larg = Math.min(24, Math.max(3, vaga - 2));
+  const cada = Math.ceil(pontos.length / 6);
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('class', 'gr-svg');
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  let sel = pontos.length - 1;
+  const desenhar = () => {
+    const atual = pontos[sel];
+    const barras = pontos.map((p, i) => {
+      const cx = esq + vaga * (i + 0.5), x0 = cx - larg / 2, yv = y(p.valor), y0 = y(0);
+      const r = Math.min(4, larg / 2, y0 - yv);
+      const forma = p.valor > 0
+        ? `<path d="M${x0} ${y0} V${yv + r} Q${x0} ${yv} ${x0 + r} ${yv} H${x0 + larg - r} Q${x0 + larg} ${yv} ${x0 + larg} ${yv + r} V${y0} Z" fill="${i === sel ? COR_PICO : COR_DESTAQUE}"/>`
+        : '';
+      const rot = (pontos.length - 1 - i) % cada === 0 ? `<text x="${cx}" y="${H - 6}" text-anchor="middle" font-size="11" fill="${COR_TEXTO}">${p.curto}</text>` : '';
+      return `${forma}${rot}<rect data-i="${i}" x="${esq + vaga * i}" y="0" width="${vaga}" height="${H}" fill="transparent" tabindex="0" role="button" aria-label="${p.rotulo}: ${fmt(p.valor)}"/>`;
+    }).join('');
+    svg.innerHTML = grade(marcas, y, W, esq) + barras;
+    leitura.innerHTML = '<strong></strong><span></span>';
+    leitura.firstChild.textContent = fmt(atual.valor);
+    leitura.lastChild.textContent = atual.rotulo;
+    ligarAlvos(svg, (i) => {
+      sel = i;
+      desenhar();
+    });
+  };
+  desenhar();
+  box.appendChild(svg);
+  return box;
+}
+
+function baldesDoPeriodo(series) {
+  const hoje = new Date();
+  const inicioK = inicioPeriodo() ?? (series.length ? series.map((s) => chaveData(s.criado_em)).sort()[0] : hojeChave());
+  const inicio = parseChave(inicioK);
+  const span = Math.round((hoje - inicio) / 86400000);
+  const tipo = span <= 7 ? 'dia' : span <= 182 ? 'semana' : 'mes';
+  const baldes = [];
+  const cursor = new Date(inicio);
+  if (tipo === 'semana') cursor.setDate(cursor.getDate() - (cursor.getDay() + 6) % 7);
+  if (tipo === 'mes') cursor.setDate(1);
+  while (cursor <= hoje) {
+    const ini = new Date(cursor);
+    if (tipo === 'dia') cursor.setDate(cursor.getDate() + 1);
+    else if (tipo === 'semana') cursor.setDate(cursor.getDate() + 7);
+    else cursor.setMonth(cursor.getMonth() + 1);
+    const fimEx = new Date(cursor);
+    const fim = new Date(fimEx); fim.setDate(fim.getDate() - 1);
+    const mes = capitalizar(ini.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', ''));
+    baldes.push({
+      de: chaveData(ini), ate: chaveData(fim),
+      curto: tipo === 'mes' ? mes : tipo === 'dia' ? capitalizar(ini.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '')).slice(0, 3) : `${ini.getDate()}/${ini.getMonth() + 1}`,
+      rotulo: tipo === 'mes' ? `${mes} de ${ini.getFullYear()}` : tipo === 'dia' ? capitalizar(dataCurta(ini)) : `Semana de ${dataCurtinha(chaveData(ini))}`,
+    });
+  }
+  return baldes;
+}
+
+function valorGeral(series, metrica) {
+  if (metrica === 'treinos') return new Set(series.map((s) => `${chaveData(s.criado_em)}|${s.dia_treino}`)).size;
+  return resumirSeries(series)[metrica];
+}
+
+function criarSecao(titulo, sub) {
+  const sec = document.createElement('section');
+  sec.className = 'gr-card';
+  sec.dataset.ancora = titulo;
+  sec.innerHTML = '<h2 class="gr-titulo"></h2>';
+  sec.firstChild.textContent = titulo;
+  if (sub) {
+    const p = document.createElement('p');
+    p.className = 'gr-sub';
+    p.textContent = sub;
+    sec.appendChild(p);
+  }
+  return sec;
+}
+
+function criarChips(opcoes, valor, aoEscolher, rotulo) {
+  const grupo = document.createElement('div');
+  grupo.className = 'dia-chips';
+  grupo.style.setProperty('--n', opcoes.length);
+  grupo.setAttribute('role', 'group');
+  grupo.setAttribute('aria-label', rotulo);
+  opcoes.forEach(([v, texto]) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = texto;
+    b.setAttribute('aria-pressed', String(v === valor));
+    b.addEventListener('click', () => { vibrar(5); aoEscolher(v); renderGraficos(); });
+    grupo.appendChild(b);
+  });
+  return grupo;
+}
+
+function criarTile(rotulo, valor, cor, nota) {
+  const t = document.createElement('div');
+  t.className = 'hist-stat gr-tile';
+  if (cor) t.dataset.dia = cor;
+  t.innerHTML = '<span></span><strong></strong><small></small>';
+  t.querySelector('span').textContent = rotulo;
+  t.querySelector('strong').textContent = valor;
+  t.querySelector('small').textContent = nota || '';
+  return t;
+}
+
+function fmtDelta(atual, anterior) {
+  if (!anterior) return '';
+  const p = Math.round((atual / anterior - 1) * 100);
+  return `${p > 0 ? '▲' : p < 0 ? '▼' : '='} ${Math.abs(p)}% vs anterior`;
+}
+
+function semanasSeguidas(series) {
+  const segunda = (d) => { const x = new Date(d); x.setDate(x.getDate() - (x.getDay() + 6) % 7); return chaveData(x); };
+  const semanas = new Set(series.map((s) => segunda(new Date(s.criado_em))));
+  const c = new Date();
+  if (!semanas.has(segunda(c))) c.setDate(c.getDate() - 7);   // a semana atual ainda pode ter treino
+  let n = 0;
+  while (semanas.has(segunda(c))) { n++; c.setDate(c.getDate() - 7); }
+  return n;
+}
+
+function contarRecordes(porExercicio, inicio) {
+  let n = 0;
+  porExercicio.forEach((sessoes) => {
+    let melhor = 0;
+    sessoes.forEach((s) => {
+      if (melhor > 0 && s.rm > melhor && (!inicio || s.chave >= inicio)) n++;
+      melhor = Math.max(melhor, s.rm);
+    });
+  });
+  return n;
+}
+
+function criarGradeResumo(sessoes) {
+  const prim = sessoes[0], ult = sessoes[sessoes.length - 1], ant = sessoes[sessoes.length - 2];
+  const pct = (a, b) => (b ? `${a >= b ? '+' : ''}${(((a / b) - 1) * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%` : '—');
+  const kg = (v) => (v ? `${fmtKg(v)} kg` : '—');
+  const linhas = [
+    ['Sessões', sessoes.length],
+    ['Primeira data', dataCurtinha(prim.chave)],
+    ['Última data', dataCurtinha(ult.chave)],
+    ['1RM inicial', kg(prim.rm)],
+    ['1RM atual', kg(ult.rm)],
+    ['Evolução', sessoes.length > 1 ? pct(ult.rm, prim.rm) : '—'],
+    ['Recorde 1RM', kg(Math.max(...sessoes.map((s) => s.rm)))],
+    ['Maior carga', kg(Math.max(...sessoes.map((s) => s.carga)))],
+    ['Volume última', fmtVolume(ult.volume)],
+    ['Volume anterior', ant ? fmtVolume(ant.volume) : '—'],
+    ['Volume vs anterior', ant ? pct(ult.volume, ant.volume) : '—'],
+  ];
+  const dl = document.createElement('dl');
+  dl.className = 'gr-grade';
+  linhas.forEach(([rot, val]) => {
+    const d = document.createElement('div');
+    d.innerHTML = '<dt></dt><dd></dd>';
+    d.firstChild.textContent = rot;
+    d.lastChild.textContent = val;
+    dl.appendChild(d);
+  });
+  return dl;
+}
+
+function criarMini(sessoes) {
+  const v = sessoes.map((s) => s.rm || s.reps);
+  const min = Math.min(...v), max = Math.max(...v), W = 56, H = 22;
+  const px = (i) => (v.length > 1 ? (i / (v.length - 1)) * (W - 6) + 3 : W / 2);
+  const py = (x) => (max === min ? H / 2 : H - 3 - ((x - min) / (max - min)) * (H - 6));
+  const c = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  c.setAttribute('class', 'gr-mini');
+  c.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  c.setAttribute('aria-hidden', 'true');
+  c.innerHTML = (v.length > 1 ? `<polyline points="${v.map((x, i) => `${px(i).toFixed(1)},${py(x).toFixed(1)}`).join(' ')}" fill="none" stroke="${COR_LINHA}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>` : '')
+    + `<circle cx="${px(v.length - 1)}" cy="${py(v[v.length - 1])}" r="3" fill="${COR_LINHA}"/>`;
+  return c;
+}
+
+function criarDetalheDia(chave, series) {
+  const sec = criarSecao(capitalizar(dataCurta(parseChave(chave))));
+  delete sec.dataset.ancora;   // este card muda a cada dia escolhido
+  const doDia = series.filter((s) => chaveData(s.criado_em) === chave);
+  if (!doDia.length) {
+    const p = document.createElement('p');
+    p.className = 'gr-sub';
+    p.textContent = 'Nenhuma série neste dia.';
+    sec.appendChild(p);
+    return sec;
+  }
+  const r = resumirSeries(doDia);
+  const p = document.createElement('p');
+  p.className = 'gr-sub';
+  p.textContent = [METRICAS.series.fmt(r.series), METRICAS.reps.fmt(r.reps), fmtVolume(r.volume)].join(' · ');
+  sec.appendChild(p);
+  const porEx = new Map();
+  doDia.forEach((s) => { if (!porEx.has(s.exercicio)) porEx.set(s.exercicio, []); porEx.get(s.exercicio).push(s); });
+  porEx.forEach((lista, nome) => {
+    lista.sort((a, b) => a.numero_serie - b.numero_serie);
+    const rs = resumirSeries(lista);
+    const ex = document.createElement('div');
+    ex.className = 'hist-ex gr-dia-ex';
+    ex.innerHTML = '<div class="hist-ex-head"><strong></strong><span class="hist-tag"></span></div><div class="hist-sets"></div>';
+    ex.querySelector('strong').textContent = nome;
+    ex.querySelector('.hist-tag').textContent = rs.rm ? `1RM ${fmtKg(rs.rm)} kg` : `${rs.reps} reps`;
+    agruparSeries(lista).forEach((g) => ex.querySelector('.hist-sets').appendChild(criarChipSerie(g, 'hist-set')));
+    sec.appendChild(ex);
+  });
+  return sec;
+}
+
+function criarMapaCalor(series) {
+  const sec = criarSecao('Consistência', 'Séries por dia nas últimas semanas');
+  const colunas = Math.floor((larguraGrafico() + 3) / 19);
+  const contagem = new Map();
+  series.forEach((s) => { const k = chaveData(s.criado_em); contagem.set(k, (contagem.get(k) || 0) + 1); });
+  const max = Math.max(1, ...contagem.values());
+  const inicio = new Date();
+  inicio.setDate(inicio.getDate() - (inicio.getDay() + 6) % 7 - (colunas - 1) * 7);
+  const mapa = document.createElement('div');
+  mapa.className = 'gr-mapa';
+  mapa.style.setProperty('--colunas', colunas);
+  const hoje = hojeChave();
+  for (let i = 0; i < colunas * 7; i++) {
+    const d = new Date(inicio); d.setDate(d.getDate() + i);
+    const k = chaveData(d);
+    const n = contagem.get(k) || 0;
+    if (k > hoje) { mapa.appendChild(document.createElement('span')); continue; }
+    const c = document.createElement('button');
+    c.type = 'button';
+    c.className = 'gr-celula' + (k === estado.diaSel ? ' is-sel' : '');
+    c.dataset.nivel = n ? Math.ceil((n / max) * 4) : 0;
+    c.setAttribute('aria-label', `${dataCurta(d)}: ${METRICAS.series.fmt(n)}`);
+    c.addEventListener('click', () => selecionarDia(k, () => { renderGraficos(); $('#graf-scroll').scrollTop = 0; }));
+    mapa.appendChild(c);
+  }
+  sec.appendChild(mapa);
+  const legenda = document.createElement('div');
+  legenda.className = 'gr-legenda';
+  legenda.setAttribute('aria-hidden', 'true');
+  legenda.innerHTML = 'Menos<i data-nivel="0"></i><i data-nivel="1"></i><i data-nivel="2"></i><i data-nivel="3"></i><i data-nivel="4"></i>Mais';
+  sec.appendChild(legenda);
+  return sec;
+}
+
+function criarEvolucaoExercicio(noPeriodo, todasDoTreino) {
+  const sec = criarSecao('Evolução por exercício');
+  const nomes = [...new Set(noPeriodo.map((s) => s.exercicio))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  if (!nomes.length) {
+    const p = document.createElement('p');
+    p.className = 'gr-sub';
+    p.textContent = 'Nenhuma série com esses filtros.';
+    sec.appendChild(p);
+    return sec;
+  }
+  if (!nomes.includes(estado.grafEx)) {
+    const conta = new Map();
+    noPeriodo.forEach((s) => conta.set(s.exercicio, (conta.get(s.exercicio) || 0) + 1));
+    estado.grafEx = [...conta.entries()].sort((a, b) => b[1] - a[1])[0][0];   // começa pelo mais treinado
+  }
+  const wrap = document.createElement('label');
+  wrap.className = 'select-wrap gr-select';
+  wrap.innerHTML = '<span class="sr-only">Exercício</span><select></select><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
+  const sel = wrap.querySelector('select');
+  nomes.forEach((n) => sel.append(new Option(n, n)));
+  sel.value = estado.grafEx;
+  sel.addEventListener('change', () => { estado.grafEx = sel.value; renderGraficos(); });
+  sec.appendChild(wrap);
+  sec.appendChild(criarChips(['rm', 'carga', 'volume', 'reps', 'series'].map((m) => [m, METRICAS[m].rotulo]), estado.grafMetrica, (m) => { estado.grafMetrica = m; }, 'Métrica'));
+
+  const sessoes = sessoesPorData(noPeriodo.filter((s) => s.exercicio === estado.grafEx));
+  const historicas = sessoesPorData(todasDoTreino.filter((s) => s.exercicio === estado.grafEx));
+  const recordes = new Set();
+  let melhor = 0;
+  historicas.forEach((s) => { if (melhor > 0 && s.rm > melhor) recordes.add(s.chave); melhor = Math.max(melhor, s.rm); });
+  const m = METRICAS[estado.grafMetrica];
+  const pontos = sessoes.filter((s) => s[estado.grafMetrica] > 0).map((s) => ({ chave: s.chave, valor: s[estado.grafMetrica], pr: estado.grafMetrica === 'rm' && recordes.has(s.chave) }));
+  if (pontos.length) {
+    sec.appendChild(criarLinha(pontos, m.fmt));
+    if (pontos.length === 1) {
+      const p = document.createElement('p');
+      p.className = 'gr-sub';
+      p.textContent = 'Registre mais uma sessão para ver a evolução.';
+      sec.appendChild(p);
+    }
+  } else {
+    const p = document.createElement('p');
+    p.className = 'gr-sub';
+    p.textContent = 'Este exercício não tem carga registrada. Veja Reps ou Séries.';
+    sec.appendChild(p);
+  }
+  sec.appendChild(criarGradeResumo(sessoes));
+  return sec;
+}
+
+/* Com ancorar, o card tocado fica no mesmo lugar da tela mesmo que o detalhe do dia entre acima dele. */
+function renderGraficos({ ancorar = false } = {}) {
+  const scroll = $('#graf-scroll');
+  const topoAntes = scroll.scrollTop;
+  const topoScroll = scroll.getBoundingClientRect().top;
+  const ancora = ancorar ? [...scroll.querySelectorAll('[data-ancora]')].find((c) => c.getBoundingClientRect().bottom > topoScroll) : null;
+  const ancoraNome = ancora?.dataset.ancora;
+  const ancoraTopo = ancora?.getBoundingClientRect().top;
+  const frag = document.createDocumentFragment();
+  const doTreino = cache.filter(doTreinoFiltrado);
+  const inicio = inicioPeriodo();
+  const noPeriodo = doTreino.filter((s) => !inicio || chaveData(s.criado_em) >= inicio);
+
+  const filtros = document.createElement('div');
+  filtros.className = 'filter-bar';
+  filtros.appendChild(criarChips([['7', '7 dias'], ['30', '30 dias'], ['90', '90 dias'], ['365', '1 ano'], ['tudo', 'Tudo']], estado.grafPeriodo, (v) => { estado.grafPeriodo = v; }, 'Período'));
+  filtros.appendChild(criarChips([['todos', 'Todos'], ['A', 'Peito'], ['B', 'Costas'], ['C', 'Leg'], ['D', 'Ombro']], estado.grafTreino, (v) => { estado.grafTreino = v; }, 'Treino'));
+  frag.appendChild(filtros);
+  frag.appendChild(criarSeletorDia(doTreino, renderGraficos));
+
+  if (estado.diaSel) frag.appendChild(criarDetalheDia(estado.diaSel, doTreino));
+
+  if (!cache.length) {
+    const vazio = document.createElement('p');
+    vazio.className = 'empty';
+    vazio.textContent = 'Registre suas séries para ver a evolução aqui.';
+    frag.appendChild(vazio);
+  } else {
+    // Totais do período, comparados ao período anterior de mesmo tamanho
+    const total = resumirSeries(noPeriodo);
+    let anteriores = [];
+    if (inicio) {
+      const d = parseChave(inicio); d.setDate(d.getDate() - Number(estado.grafPeriodo));
+      const iniAnt = chaveData(d);
+      anteriores = doTreino.filter((s) => { const k = chaveData(s.criado_em); return k >= iniAnt && k < inicio; });
+    }
+    const totalAnt = resumirSeries(anteriores);
+    const porExercicio = new Map();
+    doTreino.forEach((s) => { if (!porExercicio.has(s.exercicio)) porExercicio.set(s.exercicio, []); porExercicio.get(s.exercicio).push(s); });
+    porExercicio.forEach((lista, nome) => porExercicio.set(nome, sessoesPorData(lista)));
+
+    const tiles = document.createElement('div');
+    tiles.className = 'hist-stats gr-tiles';
+    tiles.append(
+      criarTile('Treinos', valorGeral(noPeriodo, 'treinos'), 'A', fmtDelta(valorGeral(noPeriodo, 'treinos'), valorGeral(anteriores, 'treinos'))),
+      criarTile('Séries', total.series, 'B', fmtDelta(total.series, totalAnt.series)),
+      criarTile('Reps', total.reps.toLocaleString('pt-BR'), 'C', fmtDelta(total.reps, totalAnt.reps)),
+      criarTile('Volume', fmtVolume(total.volume), 'D', fmtDelta(total.volume, totalAnt.volume)),
+      criarTile('Recordes batidos', contarRecordes(porExercicio, inicio), null, 'de 1RM estimado'),
+      criarTile('Semanas seguidas', semanasSeguidas(doTreino), null, 'com treino'),
+    );
+    frag.appendChild(tiles);
+
+    frag.appendChild(criarEvolucaoExercicio(noPeriodo, doTreino));
+
+    // Evolução geral do treino
+    const geral = criarSecao('Evolução geral');
+    geral.appendChild(criarChips(['series', 'reps', 'volume', 'treinos'].map((m) => [m, METRICAS[m].rotulo]), estado.grafGeral, (m) => { estado.grafGeral = m; }, 'Métrica geral'));
+    const baldes = baldesDoPeriodo(noPeriodo).map((b) => ({
+      ...b,
+      valor: valorGeral(noPeriodo.filter((s) => { const k = chaveData(s.criado_em); return k >= b.de && k <= b.ate; }), estado.grafGeral),
+    }));
+    geral.appendChild(criarBarras(baldes, METRICAS[estado.grafGeral].fmt));
+    frag.appendChild(geral);
+
+    // Distribuição por treino: o nome ao lado da barra identifica cada um
+    const dist = criarSecao('Séries por treino', 'No período selecionado');
+    const noPeriodoTodos = cache.filter((s) => !inicio || chaveData(s.criado_em) >= inicio);
+    const contaDia = DIAS.map((d) => [d, noPeriodoTodos.filter((s) => s.dia_treino === d).length]);
+    const maxDia = Math.max(1, ...contaDia.map(([, n]) => n));
+    contaDia.sort((a, b) => b[1] - a[1]).forEach(([d, n]) => {
+      const l = document.createElement('div');
+      l.className = 'gr-dist';
+      l.dataset.dia = d;
+      l.innerHTML = '<span class="gr-dist-nome"></span><span class="gr-dist-trilha"><i></i></span><span class="gr-dist-n"></span>';
+      l.querySelector('.gr-dist-nome').textContent = NOMES_TREINO[d].replace(' Day', '');
+      l.querySelector('i').style.width = `${(n / maxDia) * 100}%`;
+      l.querySelector('.gr-dist-n').textContent = n;
+      dist.appendChild(l);
+    });
+    frag.appendChild(dist);
+
+    frag.appendChild(criarMapaCalor(doTreino));
+
+    // Recordes de todo o histórico, os mais recentes primeiro
+    const rec = criarSecao('Recordes', 'De todo o histórico, pelo 1RM estimado');
+    const seteDias = new Date(); seteDias.setDate(seteDias.getDate() - 6);
+    const limiteNovo = chaveData(seteDias);
+    const listaRec = [...porExercicio.entries()].map(([nome, sessoes]) => {
+      const melhorS = sessoes.reduce((m, s) => (s.rm > m.rm ? s : m), sessoes[0]);
+      return { nome, melhorS, carga: Math.max(...sessoes.map((s) => s.carga)), novo: sessoes.length > 1 && melhorS.chave !== sessoes[0].chave && melhorS.chave >= limiteNovo };
+    }).filter((r) => r.melhorS.rm > 0).sort((a, b) => b.melhorS.chave.localeCompare(a.melhorS.chave));
+    listaRec.forEach((r) => {
+      const l = document.createElement('div');
+      l.className = 'gr-recorde';
+      l.innerHTML = '<div><strong></strong><span></span></div><div class="gr-recorde-valor"><b></b><span></span></div>';
+      l.querySelector('strong').textContent = r.nome;
+      l.querySelector('div span').textContent = `Maior carga ${fmtKg(r.carga)} kg`;
+      l.querySelector('b').textContent = `${fmtKg(r.melhorS.rm)} kg`;
+      l.querySelector('.gr-recorde-valor span').textContent = `${r.novo ? 'Novo · ' : ''}${dataCurtinha(r.melhorS.chave)}`;
+      rec.appendChild(l);
+    });
+    if (!listaRec.length) {
+      const p = document.createElement('p');
+      p.className = 'gr-sub';
+      p.textContent = 'Registre séries com carga para ver seus recordes.';
+      rec.appendChild(p);
+    }
+    frag.appendChild(rec);
+
+    // Resumo por exercício: a mesma tabela da planilha, um exercício aberto por vez
+    const tab = criarSecao('Resumo por exercício', 'Toque para ver os detalhes do período');
+    const noPeriodoPorEx = new Map();
+    noPeriodo.forEach((s) => { if (!noPeriodoPorEx.has(s.exercicio)) noPeriodoPorEx.set(s.exercicio, []); noPeriodoPorEx.get(s.exercicio).push(s); });
+    [...noPeriodoPorEx.entries()].sort((a, b) => a[0].localeCompare(b[0], 'pt-BR')).forEach(([nome, lista]) => {
+      const sessoes = sessoesPorData(lista);
+      const det = document.createElement('details');
+      det.className = 'gr-resumo';
+      det.name = 'gr-resumo';
+      const sum = document.createElement('summary');
+      sum.innerHTML = '<span class="gr-resumo-nome"></span>';
+      sum.firstChild.textContent = nome;
+      sum.appendChild(criarMini(sessoes));
+      const ini = sessoes[0].rm, fim = sessoes[sessoes.length - 1].rm;
+      if (sessoes.length > 1 && ini) {
+        const tag = document.createElement('span');
+        const p = Math.round((fim / ini - 1) * 100);
+        tag.className = 'hist-tag' + (p > 0 ? ' is-up' : '');
+        tag.textContent = `${p > 0 ? '+' : ''}${p}%`;
+        sum.appendChild(tag);
+      }
+      det.append(sum, criarGradeResumo(sessoes));
+      tab.appendChild(det);
+    });
+    frag.appendChild(tab);
+  }
+
+  $('#graf-conteudo').replaceChildren(frag);
+  scroll.scrollTop = topoAntes;
+  const novaAncora = ancoraNome && [...scroll.querySelectorAll('[data-ancora]')].find((c) => c.dataset.ancora === ancoraNome);
+  if (novaAncora) scroll.scrollTop += novaAncora.getBoundingClientRect().top - ancoraTopo;
+}
+
+
+/* =====================================================================
    5. NAVEGAÇÃO, EVENTOS GLOBAIS E SERVICE WORKER
    ===================================================================== */
 
-const PROFUNDIDADE = { inicio: 0, historico: 1, treino: 1, exercicio: 2 };
-const ABAS = new Set(['inicio', 'historico']);
+const PROFUNDIDADE = { inicio: 0, historico: 1, graficos: 1, treino: 1, exercicio: 2 };
+const ABAS = new Set(['inicio', 'historico', 'graficos']);
 const rolagens = {};   // posição de cada tela, para voltar ao mesmo ponto da lista
 
 function listaRolavel(view) { return view.querySelector('.scroll-list, .hist-scroll'); }
@@ -1384,10 +2081,11 @@ function mostrar(tela, { animar = true } = {}) {
 
   estado.tela = tela;
   entrando.hidden = false;
-  if (tela === 'inicio') renderInicio();
+  if (tela === 'inicio') { estado.diaSel = null; estado.semanaDesl = 0; renderInicio(); }
   if (tela === 'treino') renderTreino();
   if (tela === 'exercicio') renderExercicio();
   if (tela === 'historico') renderHistorico();
+  if (tela === 'graficos') renderGraficos();
   atualizarSync();
 
   const tabbar = $('#tabbar');
@@ -1472,8 +2170,13 @@ function iniciar() {
   document.querySelectorAll('.tab').forEach((b) => b.addEventListener('click', () => {
     if (b.dataset.aba === estado.tela) return;
     vibrar(5);
-    if (b.dataset.aba === 'historico') irPara('historico');
-    else voltar();
+    if (b.dataset.aba === 'inicio') voltar();
+    else if (estado.tela === 'inicio') irPara(b.dataset.aba);
+    else {
+      // Entre abas internas, troca a entrada atual: voltar sempre leva ao início.
+      history.replaceState({ tela: b.dataset.aba }, '');
+      mostrar(b.dataset.aba);
+    }
   }));
 
   // Novo exercício
