@@ -42,7 +42,7 @@
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --tab-h: 64px;
   /* A barra de abas invade a área segura: para logo acima do traço de início do iPhone (13px). */
-  --tab-base: max(4px, calc(var(--safe-bottom) - 20px));
+  --tab-base: max(4px, calc(var(--safe-bottom) - 26px));
   --r-lg: 24px;
   --r-md: 20px;
   --r-sm: 14px;
