@@ -2279,6 +2279,18 @@ function iniciar() {
     if (estado.tela === 'inicio') renderInicio();
   }, 60000);
 
+  // iOS 26 com o app na tela de início: a área do app termina antes da borda de baixo
+  // (fica mais curta pela altura da barra de status). Mede o que falta e desce a barra de abas até lá.
+  const medirFolga = () => {
+    const app = navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
+    const retrato = matchMedia('(orientation: portrait)').matches;
+    const alturaTela = retrato ? Math.max(screen.width, screen.height) : Math.min(screen.width, screen.height);
+    const folga = Math.round(alturaTela - window.innerHeight);
+    document.documentElement.style.setProperty('--folga-base', `${app && folga > 0 && folga <= 80 ? folga : 0}px`);
+  };
+  medirFolga();
+  window.addEventListener('resize', medirFolga);
+
   history.replaceState({ tela: 'inicio' }, '');
   mostrar('inicio');
   sincronizar();
