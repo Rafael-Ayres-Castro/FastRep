@@ -559,6 +559,46 @@ button.seletor-periodo { height: 34px; justify-self: center; padding: 0 12px; bo
 
 /* ---------- TELA 5: gráficos ---------- */
 #graf-conteudo { display: flex; flex-direction: column; gap: 12px; }
+/* Filtro dos gráficos: um botão fino com o filtro escrito; o × limpa tudo. */
+.graf-filtro { flex-direction: row; align-items: center; gap: 8px; }
+.graf-filtro-btn { flex: 0 1 auto; min-width: 0; max-width: 100%; font-size: 15px; font-weight: 500; }
+.graf-filtro-btn #graf-filtro-txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.graf-filtro-limpar { width: 36px; height: 36px; flex-shrink: 0; border-radius: 50%; background: var(--fill); display: grid; place-items: center; }
+.graf-filtro-limpar svg { width: 16px; height: 16px; }
+.sheet-filtro { max-height: calc(100dvh - var(--safe-top) - 24px); }
+.field-rot { font-size: 14px; font-weight: 500; color: var(--text-2); }
+.sheet-filtro .dia-chips button { background: var(--surface-2); }
+.sheet-filtro .dia-chips button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+.sheet-filtro .dia-chips + .field-duo { margin-top: 2px; }
+.busca-linha {
+  height: 52px; border-radius: 18px; background: var(--surface-2);
+  display: flex; align-items: center; gap: 10px; padding: 0 8px 0 16px;
+}
+.busca-linha:focus-within { box-shadow: inset 0 0 0 2px var(--accent); }
+.busca-linha .ico { width: 18px; height: 18px; color: var(--muted); }
+.field .busca-linha input, .field .busca-linha input:focus { flex: 1; min-width: 0; height: 100%; padding: 0; background: none; border-radius: 0; font-size: 17px; box-shadow: none; -webkit-appearance: none; appearance: none; }
+.busca-linha input::-webkit-search-cancel-button { display: none; }
+.busca-limpar { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; color: var(--muted); }
+.busca-limpar svg { width: 16px; height: 16px; }
+.sugestoes { display: flex; flex-direction: column; border-radius: 16px; background: var(--surface-2); overflow: hidden; }
+.sugestao { min-height: 46px; padding: 0 16px; text-align: left; font-size: 16px; border-top: 1px solid var(--line); }
+.sugestao:first-child { border-top: 0; }
+.sugestao:active { transform: none; background: var(--fill); }
+.sugestao-vazia { margin: 0; padding: 14px 16px; font-size: 14px; color: var(--muted); }
+.data-campo { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.data-campo span { font-size: 13px; color: var(--muted); }
+.field .data-campo input { height: 48px; width: 100%; border-radius: 14px; padding: 0 12px; font-size: 16px; color-scheme: dark; -webkit-appearance: none; appearance: none; }
+/* Gráficos: volume e lista de exercícios */
+.gr-legenda-media { margin: 6px 0 0; display: flex; align-items: center; gap: 8px; }
+.gr-legenda-media i { width: 16px; border-top: 1.5px dashed rgba(255, 255, 255, 0.55); }
+.gr-ex { width: 100%; min-height: 58px; display: flex; align-items: center; gap: 10px; padding: 8px 0; text-align: left; border-top: 1px solid var(--line); }
+.gr-ex:active { transform: none; opacity: 0.7; }
+.gr-ex-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.gr-ex-txt strong { font-size: 15px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gr-ex-txt span { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.gr-ex-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 2px 0; }
+.gr-ex-head .display { margin: 0; font-size: 26px; min-width: 0; overflow-wrap: anywhere; }
+.gr-ex-head .grafico-letras b { min-width: 22px; height: 22px; border-radius: 7px; font-size: 13px; }
 #graf-conteudo .filter-bar { gap: 6px; }
 #graf-conteudo .seletor-dia { margin-top: 0; }
 .gr-card { padding: 16px; border-radius: var(--r-md); background: var(--surface); display: flex; flex-direction: column; gap: 10px; min-width: 0; }
@@ -569,8 +609,8 @@ button.seletor-periodo { height: 34px; justify-self: center; padding: 0 12px; bo
 .gr-card .dia-chips button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
 .gr-select { background: var(--surface-2); }
 .gr-leitura { margin: 2px 0 0; display: flex; align-items: baseline; gap: 8px; font-variant-numeric: tabular-nums; }
-.gr-leitura strong { font-size: 24px; font-weight: 500; }
-.gr-leitura span { font-size: 13px; color: var(--muted); }
+.gr-leitura strong { font-size: 24px; font-weight: 500; white-space: nowrap; }
+.gr-leitura span { flex: 1; min-width: 0; font-size: 13px; color: var(--muted); }
 .gr-svg { display: block; width: 100%; height: auto; margin-top: 6px; stroke: none; font-family: var(--font); overflow: visible; }
 .gr-svg rect { outline: none; cursor: pointer; }
 .gr-svg rect:focus-visible { stroke: var(--accent); stroke-width: 2; }

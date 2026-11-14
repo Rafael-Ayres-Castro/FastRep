@@ -217,6 +217,17 @@
       <h1 class="topbar-title">Gráficos</h1>
       <div class="sync" role="status" aria-live="polite"></div>
     </header>
+
+    <div class="filter-bar graf-filtro">
+      <button type="button" class="select-wrap filtro-treino graf-filtro-btn" id="graf-filtro-btn">
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8v6l-4 2v-8z"/></svg>
+        <span id="graf-filtro-txt">Todos os treinos · Todo o período</span>
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+      <button type="button" class="graf-filtro-limpar" id="graf-filtro-limpar" aria-label="Limpar filtro" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
     <div class="hist-scroll" id="graf-scroll">
       <div id="graf-conteudo"></div>
     </div>
@@ -272,6 +283,55 @@
     </div>
     <button type="button" class="btn-remover" id="sheet-remover" hidden>Remover do treino</button>
   </form>
+
+  <!-- ============ SHEET: FILTRO DOS GRÁFICOS ============ -->
+  <div class="sheet sheet-filtro" id="sheet-filtro" role="dialog" aria-modal="true" aria-labelledby="filtro-title" hidden>
+    <div class="sheet-grab" id="filtro-grab">
+      <div class="sheet-handle" aria-hidden="true"></div>
+      <div class="sheet-grab-txt">
+        <span class="eyebrow">Gráficos</span>
+        <h2 class="display sheet-title" id="filtro-title">Filtrar</h2>
+      </div>
+    </div>
+    <div class="field">
+      <label for="filtro-ex">Exercício</label>
+      <div class="busca-linha">
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="filtro-ex" type="search" placeholder="Digite o nome do exercício" autocomplete="off" autocapitalize="sentences" enterkeyhint="search" role="combobox" aria-controls="filtro-sugestoes" aria-autocomplete="list">
+        <button type="button" class="busca-limpar" id="filtro-ex-limpar" aria-label="Limpar exercício" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="sugestoes" id="filtro-sugestoes" role="listbox" aria-label="Exercícios" hidden></div>
+    </div>
+    <div class="field">
+      <span class="field-rot">Treino</span>
+      <div class="dia-chips" id="filtro-treino" role="group" aria-label="Treino">
+        <button type="button" data-f="todos">Todos</button>
+        <button type="button" data-f="A" aria-label="Treino A, Peito">A</button>
+        <button type="button" data-f="B" aria-label="Treino B, Costas">B</button>
+        <button type="button" data-f="C" aria-label="Treino C, Leg">C</button>
+        <button type="button" data-f="D" aria-label="Treino D, Ombro">D</button>
+      </div>
+    </div>
+    <div class="field">
+      <span class="field-rot">Período</span>
+      <div class="dia-chips" id="filtro-preset" role="group" aria-label="Período rápido" style="--n: 4">
+        <button type="button" data-p="7">7 dias</button>
+        <button type="button" data-p="30">30 dias</button>
+        <button type="button" data-p="90">90 dias</button>
+        <button type="button" data-p="tudo">Tudo</button>
+      </div>
+      <div class="field-duo">
+        <label class="data-campo"><span>De</span><input type="date" id="filtro-de"></label>
+        <label class="data-campo"><span>Até</span><input type="date" id="filtro-ate"></label>
+      </div>
+    </div>
+    <div class="sheet-actions">
+      <button type="button" class="btn-sec" id="filtro-limpar">Limpar</button>
+      <button type="button" class="btn-pri" id="filtro-ok">Ver gráficos</button>
+    </div>
+  </div>
 
   <!-- Gatilho de háptico no iOS 18+ (Safari): tocar no label de um checkbox "switch" vibra. -->
   <input type="checkbox" switch id="haptic-switch" class="sr-only" aria-hidden="true" tabindex="-1">
