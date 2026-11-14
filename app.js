@@ -660,61 +660,99 @@ function renderInicio() {
   renderGraficoSemana();
 }
 
-/* Séries por dia nos últimos 7 dias: laranja nos dias de pico, balão com o total de hoje. */
+/* Volume (reps × kg) por dia da semana atual, de segunda a domingo. A semana vira sozinha
+   na segunda-feira. A barra tem a cor do treino feito e a letra dele vai embaixo do dia;
+   se houve mais de um treino no dia, a barra é dividida pelo volume de cada um. */
 function renderGraficoSemana() {
-  const dias = [];
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date(); d.setDate(d.getDate() - i);
+  const hojeK = hojeChave();
+  const segunda = new Date();
+  segunda.setDate(segunda.getDate() - (segunda.getDay() + 6) % 7);
+  const dias = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(segunda); d.setDate(d.getDate() + i);
     const k = chaveData(d);
-    dias.push({ d, n: cache.filter((s) => chaveData(s.criado_em) === k).length, hoje: i === 0 });
-  }
-  const max = Math.max(...dias.map((x) => x.n));
-  const passo = max <= 8 ? 2 : max <= 20 ? 5 : max <= 40 ? 10 : 20;
-  const topo = Math.max(4, Math.ceil(max / passo) * passo);
+    const porTreino = {};
+    cache.forEach((s) => {
+      if (chaveData(s.criado_em) !== k) return;
+      porTreino[s.dia_treino] = (porTreino[s.dia_treino] || 0) + (s.carga_kg == null ? 0 : s.repeticoes * s.carga_kg);
+    });
+    const treinos = Object.keys(porTreino).sort();
+    const volume = treinos.reduce((t, x) => t + porTreino[x], 0);
+    return { d, k, porTreino, treinos, volume, hoje: k === hojeK, futuro: k > hojeK };
+  });
+  const max = Math.max(...dias.map((x) => x.volume));
+  const bruto = Math.max(max, 1000) / 3;
+  const pot = 10 ** Math.floor(Math.log10(bruto));
+  const passo = [1, 2, 5, 10].map((m) => m * pot).find((p) => p >= bruto);
+  const topo = Math.ceil(Math.max(max, 1) / passo) * passo;
+  const totalSemana = dias.reduce((t, x) => t + x.volume, 0);
 
   const box = $('#semana-grafico');
   box.innerHTML = `
-    <h2 class="grafico-titulo">Séries por dia</h2>
+    <div class="grafico-head">
+      <h2 class="grafico-titulo">Volume da semana</h2>
+      <span class="grafico-total"></span>
+    </div>
     <div class="grafico-plot"></div>
     <div class="grafico-dias" aria-hidden="true"></div>`;
+  box.querySelector('.grafico-total').textContent = totalSemana ? fmtVolume(totalSemana) : periodoDaSemana(dias.map((x) => x.d));
   const plot = box.querySelector('.grafico-plot');
   const rotulos = box.querySelector('.grafico-dias');
   plot.setAttribute('role', 'group');
-  plot.setAttribute('aria-label', 'Séries nos últimos 7 dias. Toque em um dia para ver o histórico dele.');
+  plot.setAttribute('aria-label', 'Volume (repetições × kg) de cada dia desta semana. Toque em um dia para ver o histórico dele.');
 
   for (let v = 0; v <= topo; v += passo) {
     const linha = document.createElement('span');
     linha.className = 'grafico-linha';
     linha.style.bottom = `${(v / topo) * 100}%`;
-    linha.textContent = v;
+    linha.textContent = fmtEixo(v);
     plot.appendChild(linha);
   }
-  dias.forEach(({ d, n, hoje }) => {
+  dias.forEach(({ d, k, porTreino, treinos, volume, hoje, futuro }) => {
     const col = document.createElement('button');
     col.type = 'button';
     col.className = 'grafico-col';
-    col.setAttribute('aria-label', `${dataCurta(d)}: ${n} ${n === 1 ? 'série' : 'séries'}`);
+    col.disabled = futuro;
+    const nomes = treinos.map((x) => NOMES_TREINO[x]).join(' e ');
+    col.setAttribute('aria-label', `${dataCurta(d)}: ${treinos.length ? `${nomes}, volume ${fmtVolume(volume)}` : 'sem treino'}`);
     col.addEventListener('click', () => {
       vibrar(5);
-      estado.diaSel = chaveData(d);
-      estado.semanaDesl = semanaDeslDe(estado.diaSel);
+      estado.diaSel = k;
+      estado.semanaDesl = semanaDeslDe(k);
       irPara('historico');
     });
     const barra = document.createElement('div');
-    barra.className = 'grafico-barra' + (n > 0 && n === max ? ' is-pico' : '') + (n === 0 ? ' is-vazia' : '');
-    barra.style.height = n ? `${(n / topo) * 100}%` : '';
-    if (hoje && n > 0) {
-      const dica = document.createElement('span');
-      dica.className = 'grafico-dica';
-      dica.textContent = n;
-      barra.appendChild(dica);
+    barra.className = 'grafico-barra' + (volume ? '' : ' is-vazia');
+    if (volume) {
+      barra.style.height = `${(volume / topo) * 100}%`;
+      const pilha = document.createElement('span');
+      pilha.className = 'grafico-pilha';
+      [...treinos].reverse().forEach((x) => {
+        if (!porTreino[x]) return;
+        const parte = document.createElement('span');
+        parte.className = 'grafico-parte';
+        parte.dataset.dia = x;
+        parte.style.flexGrow = porTreino[x];
+        pilha.appendChild(parte);
+      });
+      barra.appendChild(pilha);
+      const valor = document.createElement('span');
+      valor.className = 'grafico-valor' + (hoje ? ' is-hoje' : '');
+      valor.textContent = fmtEixo(Math.round(volume));
+      barra.appendChild(valor);
     }
     col.appendChild(barra);
     plot.appendChild(col);
 
     const r = document.createElement('span');
-    r.textContent = capitalizar(d.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', ''));
-    r.classList.toggle('is-hoje', hoje);
+    r.className = 'grafico-dia' + (hoje ? ' is-hoje' : '') + (futuro ? ' is-futuro' : '');
+    r.innerHTML = '<span></span><span class="grafico-letras"></span>';
+    r.firstChild.textContent = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'][d.getDay() === 0 ? 6 : d.getDay() - 1];
+    treinos.forEach((x) => {
+      const l = document.createElement('b');
+      l.dataset.dia = x;
+      l.textContent = x;
+      r.lastChild.appendChild(l);
+    });
     rotulos.appendChild(r);
   });
 }
@@ -2233,6 +2271,13 @@ function iniciar() {
       if (estado.tela === 'inicio') renderInicio(); // a data pode ter mudado
     }
   });
+  // Com o app aberto na virada do dia (e de domingo para segunda), a tela inicial se atualiza sozinha.
+  let diaVisto = hojeChave();
+  setInterval(() => {
+    if (hojeChave() === diaVisto) return;
+    diaVisto = hojeChave();
+    if (estado.tela === 'inicio') renderInicio();
+  }, 60000);
 
   history.replaceState({ tela: 'inicio' }, '');
   mostrar('inicio');
