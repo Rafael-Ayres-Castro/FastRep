@@ -367,7 +367,8 @@ const estado = {
   carga: null,      // número ou null (campo vazio)
   semCarga: false,
   filtroDia: 'todos',
-  filtroEx: 'todos',
+  histAbertos: new Set(), // treinos abertos no Histórico ('2026-11-14|A')
+  histFoco: null,          // dia tocado no gráfico da tela inicial: o Histórico abre nele
   editando: null,   // nome do exercício aberto no sheet de edição
   diaSel: null,     // dia escolhido nas faixas de semana ('2026-10-31'); null = hoje no treino, todos no histórico
   semanaDesl: 0,    // quantas semanas a faixa está deslocada em relação à atual
@@ -716,8 +717,7 @@ function renderGraficoSemana() {
     col.setAttribute('aria-label', `${dataCurta(d)}: ${treinos.length ? `${nomes}, volume ${fmtVolume(volume)}` : 'sem treino'}`);
     col.addEventListener('click', () => {
       vibrar(5);
-      estado.diaSel = k;
-      estado.semanaDesl = semanaDeslDe(k);
+      estado.histFoco = k;
       irPara('historico');
     });
     const barra = document.createElement('div');
@@ -938,7 +938,6 @@ function salvarEdicao(nomeBruto) {
     cache.forEach((s) => { if (s.exercicio === de) s.exercicio = para; });
     gravarCache();
     enfileirarRenomear(de, para);
-    if (estado.filtroEx === de) estado.filtroEx = para;
     if (estado.exercicio === de) estado.exercicio = para;
     gravarPadrao(de, { reps: null, carga: null });
   }
@@ -1317,71 +1316,48 @@ function ligarControlesExercicio() {
    4e. TELA HISTÓRICO
    ===================================================================== */
 
-function renderFiltroExercicios() {
-  const sel = $('#filtro-ex');
-  const nomes = [...new Set(cache.map((s) => s.exercicio))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
-  if (estado.filtroEx !== 'todos' && !nomes.includes(estado.filtroEx)) estado.filtroEx = 'todos';
-  sel.innerHTML = '';
-  sel.append(new Option('Todos os exercícios', 'todos'));
-  nomes.forEach((n) => sel.append(new Option(n, n)));
-  sel.value = estado.filtroEx;
-}
-
-/* Compara a maior carga de cada dia com o dia anterior do mesmo exercício. */
-function evolucaoExercicios() {
+/* Volume (reps × kg) de cada exercício em cada dia, comparado com a média das vezes anteriores
+   do mesmo exercício. Devolve "exercício|data" → porcentagem acima (+) ou abaixo (−) da média. */
+function volumeVsMedia() {
   const porEx = new Map();
   cache.forEach((s) => {
     if (s.carga_kg == null) return;
     if (!porEx.has(s.exercicio)) porEx.set(s.exercicio, new Map());
     const porData = porEx.get(s.exercicio);
     const k = chaveData(s.criado_em);
-    porData.set(k, Math.max(porData.get(k) ?? 0, s.carga_kg));
+    porData.set(k, (porData.get(k) ?? 0) + s.repeticoes * s.carga_kg);
   });
 
-  const evolucao = new Map();
+  const pct = new Map();
   porEx.forEach((porData, nome) => {
-    let anterior = null;
-    let melhor = null;
+    let soma = 0, vezes = 0;
     [...porData.keys()].sort().forEach((k) => {
-      const max = porData.get(k);
-      if (anterior != null) evolucao.set(`${nome}|${k}`, { delta: max - anterior, recorde: max > melhor });
-      anterior = max;
-      melhor = Math.max(melhor ?? 0, max);
+      const vol = porData.get(k);
+      if (vezes && soma > 0) pct.set(`${nome}|${k}`, (vol / (soma / vezes) - 1) * 100);
+      if (vol > 0) { soma += vol; vezes += 1; }
     });
   });
-  return evolucao;
+  return pct;
 }
 
-function renderSemanaHistorico(dias) {
-  const periodo = document.createElement('span');
-  periodo.className = 'seletor-periodo';
-  periodo.textContent = periodoDaSemana(dias);
-  const [anterior, proxima] = criarSetasSemana(() => { renderHistorico(); $('#hist-scroll').scrollTop = 0; });
-  $('#hist-semana').replaceChildren(anterior, periodo, proxima);
-}
-
-function renderResumoHistorico(filtradas) {
-  const box = $('#hist-resumo');
-  box.innerHTML = '';
-  if (!filtradas.length) return;
-
-  const treinos = new Set(filtradas.map((s) => `${chaveData(s.criado_em)}|${s.dia_treino}`)).size;
-  const stats = [
-    ['Treinos', treinos, 'A', '<path d="M12 3c1 3 5 5 5 10a5 5 0 0 1-10 0c0-2 1-3 2-4 0 2 1 3 2 3 1-3 0-6 1-9Z"/>'],
-    ['Séries', filtradas.length, 'D', '<path d="M6 7v10M18 7v10M3 10v4M21 10v4M6 12h12"/>'],
-  ];
-  const tiles = document.createElement('div');
-  tiles.className = 'hist-stats';
-  stats.forEach(([rotulo, valor, cor, icone]) => {
-    const t = document.createElement('div');
-    t.className = 'hist-stat';
-    t.dataset.dia = cor;
-    t.innerHTML = `<span></span><svg viewBox="0 0 24 24" aria-hidden="true">${icone}</svg><strong></strong>`;
-    t.querySelector('span').textContent = rotulo;
-    t.querySelector('strong').textContent = valor;
-    tiles.appendChild(t);
-  });
-  box.appendChild(tiles);
+function criarTagMedia(pct) {
+  if (pct == null) return null;
+  const n = Math.round(pct);
+  const tag = document.createElement('span');
+  if (n === 0) {
+    tag.className = 'hist-tag';
+    tag.textContent = '= média';
+    tag.setAttribute('aria-label', 'Volume igual à média das vezes anteriores');
+  } else if (n > 0) {
+    tag.className = 'hist-tag is-up';
+    tag.textContent = `▲ ${n}%`;
+    tag.setAttribute('aria-label', `Volume ${n}% acima da média das vezes anteriores`);
+  } else {
+    tag.className = 'hist-tag is-down';
+    tag.textContent = `▼ ${-n}%`;
+    tag.setAttribute('aria-label', `Volume ${-n}% abaixo da média das vezes anteriores`);
+  }
+  return tag;
 }
 
 function fmtDuracao(series) {
@@ -1391,44 +1367,53 @@ function fmtDuracao(series) {
   return min < 60 ? `${min} min` : `${Math.floor(min / 60)}h${pad2(min % 60)}`;
 }
 
-function criarTagEvolucao(ev) {
-  if (!ev || (!ev.delta && !ev.recorde)) return null;
-  const tag = document.createElement('span');
-  const valor = `${fmtKg(Math.abs(ev.delta))} kg`;
-  if (ev.recorde) {
-    tag.className = 'hist-tag is-pr';
-    tag.textContent = `PR +${valor}`;
-    tag.setAttribute('aria-label', `Recorde: mais ${valor}`);
-  } else if (ev.delta > 0) {
-    tag.className = 'hist-tag is-up';
-    tag.textContent = `▲ ${valor}`;
-    tag.setAttribute('aria-label', `Mais ${valor} que a vez anterior`);
-  } else {
-    tag.className = 'hist-tag';
-    tag.textContent = `▼ ${valor}`;
-    tag.setAttribute('aria-label', `Menos ${valor} que a vez anterior`);
-  }
-  return tag;
+const volumeDe = (series) => series.reduce((t, s) => t + (s.carga_kg == null ? 0 : s.repeticoes * s.carga_kg), 0);
+
+/* Os exercícios de um treino, na ordem em que foram feitos, cada um com suas séries. */
+function preencherTreinoHistorico(corpo, porEx, k) {
+  const pend = idsPendentes();
+  const media = volumeVsMedia();
+  corpo.innerHTML = '';
+  [...porEx.entries()].reverse().forEach(([nome, series]) => {
+    series.sort((a, b) => a.numero_serie - b.numero_serie);
+    const ex = document.createElement('div');
+    ex.className = 'hist-ex';
+    ex.innerHTML = '<div class="hist-ex-head"><strong></strong></div><div class="hist-sets"></div>';
+    ex.querySelector('strong').textContent = nome;
+    const tag = criarTagMedia(media.get(`${nome}|${k}`));
+    if (tag) ex.querySelector('.hist-ex-head').appendChild(tag);
+    const sets = ex.querySelector('.hist-sets');
+    agruparSeries(series).forEach((g) => {
+      const el = criarChipSerie(g, 'hist-set');
+      if (g.some((s) => pend.has(s.id))) {
+        el.insertAdjacentHTML('beforeend', '<span class="pend" title="Aguardando envio" aria-label="aguardando envio"></span>');
+      }
+      sets.appendChild(el);
+    });
+    corpo.appendChild(ex);
+  });
 }
 
+/* Todos os dias com treino, do mais recente para o mais antigo. Cada treino aparece fechado
+   (ícone, nome, séries, tempo e volume do dia); tocar abre os exercícios e as séries. */
 function renderHistorico() {
-  renderFiltroExercicios();
+  // Vindo da tela inicial com um dia escolhido: esse dia já abre e a lista rola até ele.
+  const foco = estado.histFoco;
+  estado.histFoco = null;
+  if (foco) estado.filtroDia = 'todos';
+
   document.querySelectorAll('#filtro-dia button').forEach((b) => {
     b.setAttribute('aria-pressed', String(b.dataset.f === estado.filtroDia));
   });
-
-  const dias = diasDaSemana();
-  renderSemanaHistorico(dias);
-  const [primeiroDia, ultimoDia] = [chaveData(dias[0]), chaveData(dias[6])];
+  if (foco) {
+    new Set(cache.filter((s) => chaveData(s.criado_em) === foco).map((s) => s.dia_treino))
+      .forEach((dia) => estado.histAbertos.add(`${foco}|${dia}`));
+  }
 
   const filtradas = cache
-    .filter((s) => { const k = chaveData(s.criado_em); return k >= primeiroDia && k <= ultimoDia; })
     .filter((s) => estado.filtroDia === 'todos' || s.dia_treino === estado.filtroDia)
-    .filter((s) => estado.filtroEx === 'todos' || s.exercicio === estado.filtroEx)
     .slice()
     .sort((a, b) => b.criado_em.localeCompare(a.criado_em));
-
-  renderResumoHistorico(filtradas);
 
   // data → dia de treino → exercício → séries
   const porData = new Map();
@@ -1442,9 +1427,8 @@ function renderHistorico() {
     porEx.get(s.exercicio).push(s);
   });
 
-  const pend = idsPendentes();
-  const evolucao = evolucaoExercicios();
   const frag = document.createDocumentFragment();
+  let alvo = null;
 
   porData.forEach((porDia, k) => {
     const partes = partesData(k);
@@ -1455,44 +1439,43 @@ function renderHistorico() {
     h.querySelector('strong').textContent = partes.titulo;
     h.querySelector('.hist-date-txt span').textContent = partes.sub;
     frag.appendChild(h);
+    if (k === foco) alvo = h;
 
     porDia.forEach((porEx, dia) => {
       const doTreino = [...porEx.values()].flat();
       const meta = [`${doTreino.length} ${doTreino.length === 1 ? 'série' : 'séries'}`];
-      if (estado.filtroEx === 'todos') {
-        const duracao = fmtDuracao(doTreino);
-        if (duracao) meta.push(duracao);
-      }
+      const duracao = fmtDuracao(doTreino);
+      if (duracao) meta.push(duracao);
+      const volume = volumeDe(doTreino);
+      if (volume) meta.push(fmtVolume(volume));
 
+      const chave = `${k}|${dia}`;
+      const aberto = estado.histAbertos.has(chave);
       const grupo = document.createElement('section');
-      grupo.className = 'hist-group';
+      grupo.className = 'hist-group' + (aberto ? ' is-aberto' : '');
       grupo.innerHTML = `
-        <div class="hist-group-head">
+        <button type="button" class="hist-group-head">
           <span class="hist-badge" aria-hidden="true"></span>
-          <div class="hist-group-title"><strong></strong><span></span></div>
-        </div>`;
+          <span class="hist-group-title"><strong></strong><span></span></span>
+          <svg class="hist-seta" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <div class="hist-group-body"></div>`;
+      const head = grupo.querySelector('.hist-group-head');
+      const corpo = grupo.querySelector('.hist-group-body');
       grupo.querySelector('.hist-badge').dataset.dia = dia;
       grupo.querySelector('strong').textContent = NOMES_TREINO[dia];
       grupo.querySelector('.hist-group-title span').textContent = meta.join(' · ');
-
-      // exercícios na ordem em que foram feitos
-      [...porEx.entries()].reverse().forEach(([nome, series]) => {
-        series.sort((a, b) => a.numero_serie - b.numero_serie);
-        const ex = document.createElement('div');
-        ex.className = 'hist-ex';
-        ex.innerHTML = '<div class="hist-ex-head"><strong></strong></div><div class="hist-sets"></div>';
-        ex.querySelector('strong').textContent = nome;
-        const tag = criarTagEvolucao(evolucao.get(`${nome}|${k}`));
-        if (tag) ex.querySelector('.hist-ex-head').appendChild(tag);
-        const sets = ex.querySelector('.hist-sets');
-        agruparSeries(series).forEach((g) => {
-          const el = criarChipSerie(g, 'hist-set');
-          if (g.some((s) => pend.has(s.id))) {
-            el.insertAdjacentHTML('beforeend', '<span class="pend" title="Aguardando envio" aria-label="aguardando envio"></span>');
-          }
-          sets.appendChild(el);
-        });
-        grupo.appendChild(ex);
+      head.setAttribute('aria-expanded', String(aberto));
+      corpo.hidden = !aberto;
+      if (aberto) preencherTreinoHistorico(corpo, porEx, k);
+      head.addEventListener('click', () => {
+        const abrir = !estado.histAbertos.has(chave);
+        if (abrir) { estado.histAbertos.add(chave); preencherTreinoHistorico(corpo, porEx, k); }
+        else estado.histAbertos.delete(chave);
+        grupo.classList.toggle('is-aberto', abrir);
+        head.setAttribute('aria-expanded', String(abrir));
+        corpo.hidden = !abrir;
+        vibrar(5);
       });
       frag.appendChild(grupo);
     });
@@ -1501,15 +1484,14 @@ function renderHistorico() {
   const lista = $('#hist-list');
   lista.innerHTML = '';
   lista.appendChild(frag);
+  if (alvo) requestAnimationFrame(() => alvo.scrollIntoView({ block: 'start' }));
 
   const vazio = $('#hist-vazio');
   vazio.hidden = filtradas.length > 0;
   if (!filtradas.length) {
     vazio.textContent = !cache.length
       ? 'Nenhuma série registrada ainda. Bora treinar!'
-      : estado.filtroDia !== 'todos' || estado.filtroEx !== 'todos'
-      ? 'Nenhuma série com esses filtros nesta semana.'
-      : 'Nenhum treino nesta semana.';
+      : 'Nenhum treino deste tipo ainda.';
   }
 }
 
@@ -1519,11 +1501,6 @@ function ligarHistorico() {
     if (!b) return;
     estado.filtroDia = b.dataset.f;
     vibrar(5);
-    renderHistorico();
-    $('#hist-scroll').scrollTop = 0;
-  });
-  $('#filtro-ex').addEventListener('change', (e) => {
-    estado.filtroEx = e.target.value;
     renderHistorico();
     $('#hist-scroll').scrollTop = 0;
   });

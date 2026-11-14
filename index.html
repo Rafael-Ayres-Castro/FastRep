@@ -189,25 +189,16 @@
     </header>
 
     <div class="filter-bar">
-      <label class="select-wrap">
-        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8v6l-4 2v-8z"/></svg>
-        <span class="sr-only">Filtrar por exercício</span>
-        <select id="filtro-ex"></select>
-        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
-      </label>
-      <div class="dia-chips" id="filtro-dia" role="group" aria-label="Filtrar por dia">
+      <div class="dia-chips" id="filtro-dia" role="group" aria-label="Filtrar por treino">
         <button type="button" data-f="todos">Todos</button>
-        <button type="button" data-f="A">Peito</button>
-        <button type="button" data-f="B">Costas</button>
-        <button type="button" data-f="C">Leg</button>
-        <button type="button" data-f="D">Ombro</button>
+        <button type="button" data-f="A" aria-label="Treino A, Peito">A</button>
+        <button type="button" data-f="B" aria-label="Treino B, Costas">B</button>
+        <button type="button" data-f="C" aria-label="Treino C, Leg">C</button>
+        <button type="button" data-f="D" aria-label="Treino D, Ombro">D</button>
       </div>
     </div>
 
-    <div class="seletor-head semana-nav" id="hist-semana"></div>
-
     <div class="hist-scroll" id="hist-scroll">
-      <div id="hist-resumo"></div>
       <div id="hist-list"></div>
       <p class="empty" id="hist-vazio" hidden></p>
     </div>

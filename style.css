@@ -609,7 +609,11 @@ button.seletor-periodo { height: 34px; justify-self: center; padding: 0 12px; bo
   margin-bottom: 12px; border-radius: var(--r-md);
   background: var(--surface);
 }
-.hist-group-head { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
+.hist-group-head { width: 100%; display: flex; align-items: center; gap: 12px; padding: 14px 16px; text-align: left; border-radius: var(--r-md); }
+.hist-group-head:active { transform: none; opacity: 0.75; }
+.hist-seta { margin-left: auto; width: 20px; height: 20px; color: var(--muted); transition: transform 200ms var(--ease-out); }
+.hist-group.is-aberto .hist-seta { transform: rotate(180deg); }
+.hist-group-body { padding-bottom: 2px; }
 .hist-badge {
   width: 46px; height: 46px; border-radius: 16px; flex-shrink: 0;
   background: var(--cor); color: #FFFFFF;
@@ -628,6 +632,7 @@ button.seletor-periodo { height: 34px; justify-self: center; padding: 0 12px; bo
   font-size: 13px; font-weight: 500; white-space: nowrap;
 }
 .hist-tag.is-up { background: var(--ok-bg); color: var(--ok); }
+.hist-tag.is-down { background: var(--warn-bg); color: var(--warn); }
 .hist-tag.is-pr { background: var(--accent); color: var(--on-accent); }
 .hist-sets { display: flex; flex-wrap: wrap; gap: 10px 8px; }
 .hist-set {
