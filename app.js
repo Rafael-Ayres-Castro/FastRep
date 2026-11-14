@@ -368,6 +368,7 @@ const estado = {
   semCarga: false,
   filtroDia: 'todos',
   histAbertos: new Set(), // treinos abertos no Histórico ('2026-11-14|A')
+  grafSemana: 0,          // semana do gráfico da tela inicial (0 = atual, -1 = passada)
   histFoco: null,          // dia tocado no gráfico da tela inicial: o Histórico abre nele
   editando: null,   // nome do exercício aberto no sheet de edição
   diaSel: null,     // dia escolhido nas faixas de semana ('2026-10-31'); null = hoje no treino, todos no histórico
@@ -674,13 +675,17 @@ function renderInicio() {
   renderGraficoSemana();
 }
 
-/* Volume (reps × kg) por dia da semana atual, de segunda a domingo. A semana vira sozinha
-   na segunda-feira. A barra tem a cor do treino feito e a letra dele vai embaixo do dia;
-   se houve mais de um treino no dia, a barra é dividida pelo volume de cada um. */
-function renderGraficoSemana() {
+/* Volume (reps × kg) por dia, de segunda a domingo. A semana vira sozinha na segunda-feira.
+   A barra tem a cor do treino feito e a letra dele vai embaixo do dia; se houve mais de um
+   treino no dia, a barra é dividida pelo volume de cada um.
+   Deslizar o dedo na horizontal troca de semana: a faixa segue o dedo e a semana vizinha
+   já aparece ao lado. Não há semana depois da atual nem antes da primeira com registro. */
+const GRAF_VAO = 24;   // espaço entre uma semana e a vizinha enquanto desliza
+
+function semanaDoGrafico(desl) {
   const hojeK = hojeChave();
   const segunda = new Date();
-  segunda.setDate(segunda.getDate() - (segunda.getDay() + 6) % 7);
+  segunda.setDate(segunda.getDate() - (segunda.getDay() + 6) % 7 + desl * 7);
   const dias = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(segunda); d.setDate(d.getDate() + i);
     const k = chaveData(d);
@@ -693,26 +698,33 @@ function renderGraficoSemana() {
     const volume = treinos.reduce((t, x) => t + porTreino[x], 0);
     return { d, k, porTreino, treinos, volume, hoje: k === hojeK, futuro: k > hojeK };
   });
+  const total = dias.reduce((t, x) => t + x.volume, 0);
+  const titulo = desl === 0 ? 'Volume da semana' : desl === -1 ? 'Semana passada' : periodoDaSemana(dias.map((x) => x.d));
+  return { dias, total, titulo, rodape: total ? fmtVolume(total) : desl === 0 ? periodoDaSemana(dias.map((x) => x.d)) : 'Sem treino' };
+}
+
+/* Semana mais antiga que dá para ver: a da primeira série registrada. */
+function primeiraSemanaGrafico() {
+  if (!cache.length) return 0;
+  const primeira = cache.reduce((m, s) => (s.criado_em < m ? s.criado_em : m), cache[0].criado_em);
+  return Math.min(0, semanaDeslDe(chaveData(primeira)));
+}
+
+function criarPainelSemana(desl) {
+  const { dias } = semanaDoGrafico(desl);
   const max = Math.max(...dias.map((x) => x.volume));
   const bruto = Math.max(max, 1000) / 3;
   const pot = 10 ** Math.floor(Math.log10(bruto));
   const passo = [1, 2, 5, 10].map((m) => m * pot).find((p) => p >= bruto);
   const topo = Math.ceil(Math.max(max, 1) / passo) * passo;
-  const totalSemana = dias.reduce((t, x) => t + x.volume, 0);
 
-  const box = $('#semana-grafico');
-  box.innerHTML = `
-    <div class="grafico-head">
-      <h2 class="grafico-titulo">Volume da semana</h2>
-      <span class="grafico-total"></span>
-    </div>
-    <div class="grafico-plot"></div>
-    <div class="grafico-dias" aria-hidden="true"></div>`;
-  box.querySelector('.grafico-total').textContent = totalSemana ? fmtVolume(totalSemana) : periodoDaSemana(dias.map((x) => x.d));
-  const plot = box.querySelector('.grafico-plot');
-  const rotulos = box.querySelector('.grafico-dias');
+  const painel = document.createElement('div');
+  painel.className = 'grafico-painel';
+  painel.innerHTML = '<div class="grafico-plot"></div><div class="grafico-dias" aria-hidden="true"></div>';
+  const plot = painel.querySelector('.grafico-plot');
+  const rotulos = painel.querySelector('.grafico-dias');
   plot.setAttribute('role', 'group');
-  plot.setAttribute('aria-label', 'Volume (repetições × kg) de cada dia desta semana. Toque em um dia para ver o histórico dele.');
+  plot.setAttribute('aria-label', 'Volume (repetições × kg) de cada dia da semana. Toque em um dia para ver o histórico dele; deslize para trocar de semana.');
 
   for (let v = 0; v <= topo; v += passo) {
     const linha = document.createElement('span');
@@ -768,6 +780,163 @@ function renderGraficoSemana() {
     });
     rotulos.appendChild(r);
   });
+  return painel;
+}
+
+function renderGraficoSemana() {
+  const box = $('#semana-grafico');
+  if (box.dataset.arrastando) return;   // não troca o conteúdo debaixo do dedo
+  if (estado.grafSemana < primeiraSemanaGrafico()) estado.grafSemana = 0;
+  const info = semanaDoGrafico(estado.grafSemana);
+  if (!box.firstElementChild) {
+    box.innerHTML = `
+      <div class="grafico-head">
+        <h2 class="grafico-titulo"></h2>
+        <span class="grafico-total"></span>
+      </div>
+      <div class="grafico-janela"><div class="grafico-trilho"></div></div>`;
+    ligarDeslizeSemana(box);
+  }
+  box.querySelector('.grafico-titulo').textContent = info.titulo;
+  box.querySelector('.grafico-total').textContent = info.rodape;
+  box.querySelector('.grafico-trilho').replaceChildren(criarPainelSemana(estado.grafSemana));
+}
+
+/* O gesto: segue o dedo 1:1, resiste nas pontas (sem semana do lado), e ao soltar projeta
+   o movimento pela velocidade para decidir se troca de semana ou volta para o lugar. */
+function ligarDeslizeSemana(box) {
+  const janela = box.querySelector('.grafico-janela');
+  const trilho = box.querySelector('.grafico-trilho');
+  const reduzido = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let toque = null;      // { id, x0, y0, base, largura, horizontal, hist: [[t, x]] }
+  let animacao = null;   // { anim, troca } — animação do trilho em andamento
+
+  const xAtual = () => new DOMMatrixReadOnly(getComputedStyle(trilho).transform).m41;
+  const elastico = (passou, largura) => (passou * largura * 0.55) / (largura + 0.55 * Math.abs(passou));
+
+  const vizinhos = (largura) => {
+    trilho.querySelectorAll('.grafico-painel.is-vizinho').forEach((p) => p.remove());
+    const desl = estado.grafSemana;
+    if (desl > primeiraSemanaGrafico()) {
+      const ant = criarPainelSemana(desl - 1);
+      ant.classList.add('is-vizinho');
+      ant.style.transform = `translateX(${-(largura + GRAF_VAO)}px)`;
+      ant.inert = true;
+      trilho.appendChild(ant);
+    }
+    if (desl < 0) {
+      const prox = criarPainelSemana(desl + 1);
+      prox.classList.add('is-vizinho');
+      prox.style.transform = `translateX(${largura + GRAF_VAO}px)`;
+      prox.inert = true;
+      trilho.appendChild(prox);
+    }
+  };
+
+  const mover = (x) => { trilho.style.transform = x ? `translateX(${x}px)` : ''; };
+
+  const assentar = (delta, xSoltou, velocidade) => {
+    const largura = trilho.clientWidth + GRAF_VAO;
+    if (!delta) {
+      // Volta para o lugar.
+      const anim = trilho.animate([{ transform: `translateX(${xSoltou}px)` }, { transform: 'translateX(0px)' }],
+        { duration: 220, easing: 'cubic-bezier(0.23, 1, 0.32, 1)' });
+      animacao = { anim, troca: false };
+      mover(0);
+      anim.onfinish = () => { animacao = null; delete box.dataset.arrastando; trilho.querySelectorAll('.is-vizinho').forEach((p) => p.remove()); };
+      return;
+    }
+    const destino = -delta * largura;
+    // Um flick rápido termina mais rápido: a faixa continua na velocidade do dedo.
+    const restante = Math.abs(destino - xSoltou);
+    const duracao = Math.max(180, Math.min(300, velocidade > 0 ? (restante / velocidade) * 1000 * 2 : 300));
+    const fim = () => {
+      animacao = null;
+      delete box.dataset.arrastando;
+      estado.grafSemana += delta;
+      mover(0);
+      renderGraficoSemana();
+    };
+    vibrar(5);
+    if (reduzido()) {
+      mover(0);
+      trilho.querySelectorAll('.is-vizinho').forEach((p) => p.remove());
+      fim();
+      trilho.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160, easing: 'ease' });
+      return;
+    }
+    // O título já troca no começo do movimento: é para lá que a faixa está indo.
+    const info = semanaDoGrafico(estado.grafSemana + delta);
+    box.querySelector('.grafico-titulo').textContent = info.titulo;
+    box.querySelector('.grafico-total').textContent = info.rodape;
+    const anim = trilho.animate([{ transform: `translateX(${xSoltou}px)` }, { transform: `translateX(${destino}px)` }],
+      { duration: duracao, easing: 'cubic-bezier(0.32, 0.72, 0, 1)' });
+    animacao = { anim, troca: true };
+    mover(destino);
+    anim.onfinish = fim;
+  };
+
+  janela.addEventListener('pointerdown', (e) => {
+    if (toque || (e.pointerType === 'mouse' && e.button !== 0)) return;   // um dedo só
+    let base = 0;
+    if (animacao) {
+      // Pegou a faixa no meio do movimento: a troca termina na hora; a volta continua de onde está.
+      if (animacao.troca) {
+        animacao.anim.finish();
+      } else {
+        base = xAtual();
+        animacao.anim.cancel();
+        animacao = null;
+        mover(base);
+      }
+    }
+    toque = { id: e.pointerId, x0: e.clientX, y0: e.clientY, base, largura: trilho.clientWidth, horizontal: null, hist: [[e.timeStamp, e.clientX]] };
+  });
+
+  janela.addEventListener('pointermove', (e) => {
+    if (!toque || e.pointerId !== toque.id) return;
+    const dx = e.clientX - toque.x0, dy = e.clientY - toque.y0;
+    if (toque.horizontal === null) {
+      if (Math.hypot(dx, dy) < 10) return;           // espera a intenção ficar clara
+      toque.horizontal = Math.abs(dx) > Math.abs(dy);
+      if (!toque.horizontal) { toque = null; return; }
+      janela.setPointerCapture(e.pointerId);
+      box.dataset.arrastando = '1';
+      vizinhos(toque.largura);
+      toque.x0 = e.clientX - toque.base;              // sem pulo: começa de onde a faixa está
+    }
+    toque.hist.push([e.timeStamp, e.clientX]);
+    if (toque.hist.length > 6) toque.hist.shift();
+    let x = e.clientX - toque.x0;
+    const temAnt = estado.grafSemana > primeiraSemanaGrafico(), temProx = estado.grafSemana < 0;
+    if ((x > 0 && !temAnt) || (x < 0 && !temProx)) x = elastico(x, toque.largura);
+    if (!reduzido()) mover(x);
+  });
+
+  const soltar = (e) => {
+    if (!toque || e.pointerId !== toque.id) return;
+    const t = toque;
+    toque = null;
+    if (!t.horizontal) return;
+    // Engole o clique que viria depois do arrasto (senão abriria o Histórico do dia).
+    const engolir = (ev) => { ev.stopPropagation(); ev.preventDefault(); };
+    window.addEventListener('click', engolir, { capture: true, once: true });
+    setTimeout(() => window.removeEventListener('click', engolir, { capture: true }), 400);
+
+    const x = reduzido() ? e.clientX - t.x0 : xAtual();
+    const [t0, x0] = t.hist[0], [t1, x1] = t.hist[t.hist.length - 1];
+    const v = t1 > t0 ? ((x1 - x0) / (t1 - t0)) * 1000 : 0;   // px/s
+    const projetado = x + (v / 1000) * 0.998 / (1 - 0.998);
+    const temAnt = estado.grafSemana > primeiraSemanaGrafico(), temProx = estado.grafSemana < 0;
+    let delta = 0;
+    if (e.type !== 'pointercancel' && Math.abs(projetado) > t.largura * 0.4) {
+      if (projetado > 0 && temAnt && v >= -50) delta = -1;
+      if (projetado < 0 && temProx && v <= 50) delta = 1;
+    }
+    assentar(delta, reduzido() ? 0 : x, Math.abs(v));
+  };
+  janela.addEventListener('pointerup', soltar);
+  janela.addEventListener('pointercancel', soltar);
 }
 
 function escolherDia(dia) {
@@ -2260,6 +2429,7 @@ function iniciar() {
     if (document.visibilityState === 'visible') {
       sincronizar();
       if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistration().then((r) => r && r.update()).catch(() => {});
+      estado.grafSemana = 0;                          // ao voltar ao app, o gráfico mostra a semana atual
       if (estado.tela === 'inicio') renderInicio(); // a data pode ter mudado
     }
   });
