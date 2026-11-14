@@ -40,9 +40,9 @@
   --pad: max(16px, env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px));
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
-  --tab-h: 64px;
-  /* A barra de abas invade a área segura: para logo acima do traço de início do iPhone (13px). */
-  --tab-base: max(4px, calc(var(--safe-bottom) - 26px));
+  --tab-h: 54px;
+  /* A barra de abas invade a área segura e fica colada na borda de baixo (4px no iPhone). */
+  --tab-base: max(2px, calc(var(--safe-bottom) - 30px));
   --r-lg: 24px;
   --r-md: 20px;
   --r-sm: 14px;
@@ -277,7 +277,7 @@ body.sheet-aberto .view:not([hidden]) { transform: scale(0.96); }
 .tabbar {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
   max-width: 480px; margin: 0 auto;
-  padding: 8px var(--pad) var(--tab-base);
+  padding: 4px var(--pad) var(--tab-base);
   background: var(--bg);
   border-top: 1px solid var(--line);
   display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -285,8 +285,8 @@ body.sheet-aberto .view:not([hidden]) { transform: scale(0.96); }
 }
 .tabbar.is-off { transform: translate3d(0, 100%, 0); }
 .tab {
-  height: 50px;
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  height: 46px;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 3px;
   font-size: 12px; font-weight: 500; color: var(--muted);
 }
 .tab svg { width: 24px; height: 24px; stroke-width: 1.8; }
