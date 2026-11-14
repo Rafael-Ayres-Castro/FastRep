@@ -189,13 +189,17 @@
     </header>
 
     <div class="filter-bar">
-      <div class="dia-chips" id="filtro-dia" role="group" aria-label="Filtrar por treino">
-        <button type="button" data-f="todos">Todos</button>
-        <button type="button" data-f="A" aria-label="Treino A, Peito">A</button>
-        <button type="button" data-f="B" aria-label="Treino B, Costas">B</button>
-        <button type="button" data-f="C" aria-label="Treino C, Leg">C</button>
-        <button type="button" data-f="D" aria-label="Treino D, Ombro">D</button>
-      </div>
+      <label class="select-wrap filtro-treino">
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8v6l-4 2v-8z"/></svg>
+        <select id="filtro-dia" aria-label="Filtrar por treino">
+          <option value="todos">Todos os treinos</option>
+          <option value="A">Treino A · Peito</option>
+          <option value="B">Treino B · Costas</option>
+          <option value="C">Treino C · Leg</option>
+          <option value="D">Treino D · Ombro</option>
+        </select>
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+      </label>
     </div>
 
     <div class="hist-scroll" id="hist-scroll">

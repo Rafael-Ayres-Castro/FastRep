@@ -488,6 +488,12 @@ body.sheet-aberto .view:not([hidden]) { transform: scale(0.96); }
   font-size: 16px; font-weight: 500;
 }
 .select-wrap select option { background: var(--surface); color: var(--text); }
+/* Filtro do Histórico: um botão fino só com o tipo de treino. */
+.filtro-treino { align-self: flex-start; height: 36px; padding: 0 12px; gap: 6px; }
+.filtro-treino .ico { width: 16px; height: 16px; }
+.filtro-treino select { flex: 0 1 auto; font-size: 15px; }
+.filtro-treino.is-ativo { background: var(--accent); color: var(--on-accent); }
+.filtro-treino.is-ativo .ico { color: var(--on-accent); }
 .dia-chips { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
 .dia-chips button {
   height: 44px; border-radius: 999px;
@@ -625,14 +631,17 @@ button.seletor-periodo { height: 34px; justify-self: center; padding: 0 12px; bo
 /* Separador recuado, como nas listas do iOS */
 .hist-ex { margin-left: 16px; padding: 12px 16px 14px 0; display: flex; flex-direction: column; gap: 12px; border-top: 1px solid var(--line); }
 .hist-ex-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.hist-ex-head { align-items: flex-start; }
+.hist-ex-nome { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .hist-ex-head strong { font-size: 16px; font-weight: 500; min-width: 0; overflow-wrap: anywhere; }
+.hist-ex-vol { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .hist-tag {
   flex-shrink: 0; padding: 3px 8px; border-radius: 999px;
   background: var(--surface-2); color: var(--muted);
   font-size: 13px; font-weight: 500; white-space: nowrap;
 }
 .hist-tag.is-up { background: var(--ok-bg); color: var(--ok); }
-.hist-tag.is-down { background: var(--warn-bg); color: var(--warn); }
+.hist-tag.is-down { background: rgba(239, 65, 73, 0.18); color: var(--danger); }
 .hist-tag.is-pr { background: var(--accent); color: var(--on-accent); }
 .hist-sets { display: flex; flex-wrap: wrap; gap: 10px 8px; }
 .hist-set {

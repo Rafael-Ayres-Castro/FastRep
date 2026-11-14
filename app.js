@@ -476,6 +476,20 @@ function agruparSeries(series) {
   return [...grupos.values()];
 }
 
+/* Números das séries de um grupo: [2,3,4] → "S2–S4", [1,3] → "S1, S3", [1,2,3,5] → "S1–S3, S5". */
+function rotuloSeries(nums) {
+  const ord = [...new Set(nums)].sort((a, b) => a - b);
+  const partes = [];
+  for (let i = 0; i < ord.length; ) {
+    let j = i;
+    while (j + 1 < ord.length && ord[j + 1] === ord[j] + 1) j++;
+    if (j - i >= 2) partes.push(`S${ord[i]}–S${ord[j]}`);
+    else for (let x = i; x <= j; x++) partes.push(`S${ord[x]}`);
+    i = j + 1;
+  }
+  return partes.join(', ');
+}
+
 function criarChipSerie(grupo, classe) {
   const s = grupo[0];
   const el = document.createElement('span');
@@ -483,13 +497,12 @@ function criarChipSerie(grupo, classe) {
   el.dataset.chave = chaveGrupo(s);
   el.innerHTML = '<span></span>';
   el.lastChild.textContent = fmtSerie(s.repeticoes, s.carga_kg);
+  el.insertAdjacentHTML('afterbegin', '<span class="chip-n"></span>');
+  el.firstChild.textContent = rotuloSeries(grupo.map((x) => x.numero_serie));
   if (grupo.length > 1) {
-    el.setAttribute('aria-label', `${grupo.length} séries de ${fmtSerie(s.repeticoes, s.carga_kg)}`);
+    el.setAttribute('aria-label', `${grupo.length} séries de ${fmtSerie(s.repeticoes, s.carga_kg)}: ${el.firstChild.textContent}`);
     el.insertAdjacentHTML('beforeend', '<span class="chip-x" aria-hidden="true"></span>');
     el.lastChild.textContent = `${grupo.length}x`;
-  } else {
-    el.insertAdjacentHTML('afterbegin', '<span class="chip-n"></span>');
-    el.firstChild.textContent = 'S' + s.numero_serie;
   }
   return el;
 }
@@ -1378,8 +1391,12 @@ function preencherTreinoHistorico(corpo, porEx, k) {
     series.sort((a, b) => a.numero_serie - b.numero_serie);
     const ex = document.createElement('div');
     ex.className = 'hist-ex';
-    ex.innerHTML = '<div class="hist-ex-head"><strong></strong></div><div class="hist-sets"></div>';
+    ex.innerHTML = '<div class="hist-ex-head"><span class="hist-ex-nome"><strong></strong><span class="hist-ex-vol"></span></span></div><div class="hist-sets"></div>';
     ex.querySelector('strong').textContent = nome;
+    const vol = volumeDe(series);
+    const volEl = ex.querySelector('.hist-ex-vol');
+    if (vol) volEl.textContent = `Volume ${fmtVolume(vol)}`;
+    else volEl.remove();
     const tag = criarTagMedia(media.get(`${nome}|${k}`));
     if (tag) ex.querySelector('.hist-ex-head').appendChild(tag);
     const sets = ex.querySelector('.hist-sets');
@@ -1402,9 +1419,9 @@ function renderHistorico() {
   estado.histFoco = null;
   if (foco) estado.filtroDia = 'todos';
 
-  document.querySelectorAll('#filtro-dia button').forEach((b) => {
-    b.setAttribute('aria-pressed', String(b.dataset.f === estado.filtroDia));
-  });
+  const filtro = $('#filtro-dia');
+  filtro.value = estado.filtroDia;
+  filtro.closest('.filtro-treino').classList.toggle('is-ativo', estado.filtroDia !== 'todos');
   if (foco) {
     new Set(cache.filter((s) => chaveData(s.criado_em) === foco).map((s) => s.dia_treino))
       .forEach((dia) => estado.histAbertos.add(`${foco}|${dia}`));
@@ -1496,10 +1513,8 @@ function renderHistorico() {
 }
 
 function ligarHistorico() {
-  $('#filtro-dia').addEventListener('click', (e) => {
-    const b = e.target.closest('button');
-    if (!b) return;
-    estado.filtroDia = b.dataset.f;
+  $('#filtro-dia').addEventListener('change', (e) => {
+    estado.filtroDia = e.target.value;
     vibrar(5);
     renderHistorico();
     $('#hist-scroll').scrollTop = 0;
