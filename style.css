@@ -43,8 +43,6 @@
   --tab-h: 54px;
   /* A barra de abas invade a área segura e fica colada na borda de baixo (4px no iPhone). */
   --tab-base: max(2px, calc(var(--safe-bottom) - 30px));
-  /* Quanto falta da área do app até a borda da tela (bug do iOS 26; medido no app.js). */
-  --folga-base: 0px;
   --r-lg: 24px;
   --r-md: 20px;
   --r-sm: 14px;
@@ -128,7 +126,7 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
   transition: transform 380ms var(--ease-drawer);
 }
 /* Telas com abas: o conteúdo termina acima da barra. */
-.view-aba { padding-bottom: max(14px, calc(var(--tab-base) + var(--tab-h) + 14px - var(--folga-base))); }
+.view-aba { padding-bottom: calc(var(--tab-base) + var(--tab-h) + 14px); }
 
 /* A tela que sai continua visível por baixo (ou por cima, ao voltar) enquanto a nova entra. */
 .view.is-leaving { position: fixed; top: 0; left: 0; right: 0; z-index: 0; pointer-events: none; }
@@ -277,7 +275,7 @@ body.sheet-aberto .view:not([hidden]) { transform: scale(0.96); }
 
 /* ---------- Abas ---------- */
 .tabbar {
-  position: fixed; left: 0; right: 0; bottom: calc(-1 * var(--folga-base)); z-index: 5;
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
   max-width: 480px; margin: 0 auto;
   padding: 4px var(--pad) var(--tab-base);
   background: var(--bg);
@@ -501,7 +499,7 @@ body.sheet-aberto .view:not([hidden]) { transform: scale(0.96); }
 .hist-scroll {
   flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
   margin: 0 calc(var(--pad) * -1);
-  padding: 6px var(--pad) max(24px, calc(var(--tab-base) + var(--tab-h) + 24px - var(--folga-base)));
+  padding: 6px var(--pad) calc(var(--tab-base) + var(--tab-h) + 24px);
 }
 .hist-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .hist-stat {
